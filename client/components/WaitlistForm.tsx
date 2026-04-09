@@ -58,25 +58,9 @@ export default function WaitlistForm() {
 
   if (status === "success") {
     return (
-      <div className="waitlist-success">
-        <svg
-          width="18"
-          height="18"
-          viewBox="0 0 18 18"
-          fill="none"
-          aria-hidden="true"
-        >
-          <circle cx="9" cy="9" r="8" stroke="#FF8200" strokeWidth="1.5" />
-          <path
-            d="M6 9l2 2 4-4"
-            stroke="#FF8200"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span>You&apos;re on the list. We&apos;ll be in touch.</span>
-      </div>
+      <p className="waitlist-hint" style={{ marginTop: 36 }}>
+        You&apos;re on the list. We&apos;ll be in touch.
+      </p>
     );
   }
 
