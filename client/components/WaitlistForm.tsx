@@ -15,12 +15,36 @@ export default function WaitlistForm() {
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    if (!email || !token) return;
+    if (!email) return;
 
     setStatus("loading");
     setErrorMsg("");
 
-    const result = await joinWaitlist(email, token);
+    // If Turnstile hasn't resolved yet, wait for it (up to 5s)
+    let resolvedToken = token;
+    if (!resolvedToken) {
+      resolvedToken = await new Promise<string | null>((resolve) => {
+        const start = Date.now();
+        const interval = setInterval(() => {
+          // Check the current token via a ref-like approach
+          if (token) {
+            clearInterval(interval);
+            resolve(token);
+          } else if (Date.now() - start > 5000) {
+            clearInterval(interval);
+            resolve(null);
+          }
+        }, 100);
+      });
+    }
+
+    if (!resolvedToken) {
+      setStatus("error");
+      setErrorMsg("Verification timed out. Please refresh and try again.");
+      return;
+    }
+
+    const result = await joinWaitlist(email, resolvedToken);
 
     if (result.ok) {
       setStatus("success");
@@ -70,7 +94,7 @@ export default function WaitlistForm() {
         />
         <button
           type="submit"
-          disabled={status === "loading" || !token}
+          disabled={status === "loading"}
           className="waitlist-button"
         >
           {status === "loading" ? "Joining\u2026" : "Get Early Access"}
