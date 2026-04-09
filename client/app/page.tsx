@@ -21,10 +21,6 @@ export default function Home() {
         </p>
 
         <WaitlistForm />
-
-        <p className="waitlist-hint">
-          Be the first to know when we launch.
-        </p>
       </section>
     </main>
   );
