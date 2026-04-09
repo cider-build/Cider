@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
-import { Public_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
 import "./globals.css";
 
-const bodyFont = Public_Sans({
+const bodyFont = Inter({
   subsets: ["latin"],
   variable: "--font-body",
 });
 
 export const metadata: Metadata = {
-  title: "Cider",
-  description: "Landing page for Cider macOS sandboxes and remote iOS builds.",
+  title: "cider.build — macOS sandboxes for AI agents",
+  description:
+    "Spin up a remote Mac, build and run iOS apps, and ship without needing hardware on your desk.",
 };
 
 export default function RootLayout({

@@ -1,106 +1,31 @@
-import Image from "next/image";
-import CiderIcon from "@/components/CiderIcon";
+import CiderLogo from "@/components/CiderLogo";
+import WaitlistForm from "@/components/WaitlistForm";
 
-const commands = [
-  "cider create",
-  'cider create --repo "url"',
-  "cider list",
-  "cider [ID] --emulator ios",
-  "cider [ID] --ui",
-  "cider [ID] --run",
-  "cider stop [ID]",
-];
-
-const sections = [
-  {
-    title: "Provision",
-    copy: "Start a fresh macOS sandbox with `cider create`, or seed it from a repo and get back a clean sandbox ID.",
-  },
-  {
-    title: "Build",
-    copy: "Boot the iOS simulator, run the agent, and iterate against a real Xcode toolchain from any machine.",
-  },
-  {
-    title: "Reset",
-    copy: "When the work is done, tear the environment down and start again from the same known-good image.",
-  },
-];
 
 export default function Home() {
   return (
     <main className="page-shell">
-      <section className="grid items-start gap-16 pt-24 lg:grid-cols-[minmax(0,1fr)_minmax(440px,520px)]">
-        <div>
-          <div className="flex items-center gap-3">
-            <CiderIcon size={28} />
-            <span className="eyebrow">macOS sandboxes for AI agents</span>
-          </div>
-          <h1 className="hero-title mt-6 max-w-3xl">Let agents build iOS apps from any machine.</h1>
-          <p className="body-copy mt-6 max-w-xl text-lg">
-            Spin up a macOS sandbox, build and run iOS apps in a remote simulator,
-            and ship without needing a Mac on your desk.
-          </p>
-          <div className="mt-5 inline-flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-4 py-2.5">
-            <span className="mono-inline text-base">npm i -g cider-cli</span>
-          </div>
+      {/* ── Hero ─────────────────────────────────── */}
+      <section className="hero">
+        <CiderLogo iconSize={30} />
 
-          <div className="mt-12 max-w-xl border-t border-[var(--border)] pt-6">
-            <div className="data-label">CLI flow</div>
-            <ul className="mt-4 space-y-3">
-              {commands.map((command) => (
-                <li key={command} className="flex items-start gap-3">
-                  <span className="mt-[9px] h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-                  <span className="mono-inline">{command}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
+        <h1>
+          MacOS Sandboxes
+          <br />
+          for Coding Agents.
+        </h1>
 
-        <div className="overflow-hidden rounded-xl border border-[var(--border)]">
-          <Image
-            src="/CLI.png"
-            alt="Cider CLI"
-            width={940}
-            height={600}
-            className="w-full object-cover"
-            priority
-          />
-        </div>
+        <p className="hero-subtitle">
+          Spin up MacOS instances for your agents to build, test, and interact
+          with native SwiftUI applications.
+        </p>
+
+        <WaitlistForm />
+
+        <p className="waitlist-hint">
+          Be the first to know when we launch.
+        </p>
       </section>
-
-      <section className="mt-28 grid items-start gap-16 border-t border-[var(--border)] pt-20 lg:grid-cols-[minmax(0,0.8fr)_minmax(440px,1.2fr)]">
-        <div>
-          <div className="data-label">How it works</div>
-          <h2 className="section-title mt-4 max-w-lg">
-            Provision a remote Mac, build inside it, and throw it away when you are done.
-          </h2>
-          <div className="mt-10 space-y-8">
-            {sections.map((section) => (
-              <div key={section.title} className="border-t border-[var(--border)] pt-4">
-                <h3 className="text-xl font-semibold">{section.title}</h3>
-                <p className="body-copy mt-3 max-w-md">{section.copy}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="surface-card divide-y divide-[var(--border)] overflow-hidden">
-          {[
-            { label: "Sandbox", value: "macOS · Xcode · iOS Simulator" },
-            { label: "Build output", value: "Live log stream from xcodebuild" },
-            { label: "Agent session", value: "Prompt-driven SwiftUI builds inside the sandbox" },
-            { label: "Simulator preview", value: "On-demand screenshot capture" },
-            { label: "Lifecycle", value: "Create, inspect, and destroy disposable macOS environments" },
-          ].map(({ label, value }) => (
-            <div key={label} className="flex items-center justify-between gap-6 px-6 py-4">
-              <span className="data-label">{label}</span>
-              <span className="body-copy text-right text-sm">{value}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
     </main>
   );
 }

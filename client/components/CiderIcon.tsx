@@ -6,22 +6,22 @@ interface Props {
 }
 
 export default function CiderIcon({ className, size = 24 }: Props) {
+  const aspectRatio = 210 / 190;
+  const width = size * aspectRatio;
+
   return (
     <svg
-      width={size}
+      width={width}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox="0 0 210 190"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       className={className}
     >
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M12 21C16.9706 21 21 16.9706 21 12C21 7.02944 16.9706 3 12 3C7.02944 3 3 7.02944 3 12C3 16.9706 7.02944 21 12 21ZM12 17C14.7614 17 17 14.7614 17 12C17 9.23858 14.7614 7 12 7C9.23858 7 7 9.23858 7 12C7 14.7614 9.23858 17 12 17Z"
-        fill="var(--accent)"
-      />
-      <rect x="16" y="10" width="8" height="4" fill="var(--background)" />
+      <rect x="60" y="0" width="120" height="50" rx="25" fill="#0F172A" />
+      <rect x="0" y="70" width="110" height="50" rx="25" fill="#0F172A" />
+      <rect x="130" y="70" width="80" height="50" rx="25" fill="#FF8200" />
+      <rect x="60" y="140" width="120" height="50" rx="25" fill="#0F172A" />
     </svg>
   );
 }
