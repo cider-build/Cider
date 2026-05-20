@@ -1,9 +1,21 @@
+# node / next
 node_modules/
-cli-npm/dist/
 .next/
-*.exe
-.env.local
 next-env.d.ts
+
+# python / uv
+.venv/
 __pycache__/
 *.pyc
+
+# sqlite
+*.db
+*.db-journal
+
+# env
+.env
+.env.*
+!.env.example
+
+# os
 .DS_Store

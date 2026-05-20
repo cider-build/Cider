@@ -1,0 +1,21 @@
+[project]
+name = "provisioner"
+version = "0.1.0"
+description = "Cider provisioner: manages nodes and routes sandbox requests."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "httpx>=0.27",
+    "sqlmodel>=0.0.22",
+]
+
+[project.scripts]
+provisioner = "provisioner.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["provisioner"]
