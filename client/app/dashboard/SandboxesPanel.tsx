@@ -34,11 +34,11 @@ export default function SandboxesPanel() {
     setCreating(true);
     try {
       await sandboxes.create(selectedNode);
-      await refresh();
     } catch (err) {
       if (err instanceof APIError) setError(err.message);
     } finally {
       setCreating(false);
+      await refresh();
     }
   }
 
@@ -46,9 +46,12 @@ export default function SandboxesPanel() {
     setError("");
     try {
       await sandboxes.remove(id);
-      await refresh();
     } catch (err) {
       if (err instanceof APIError) setError(err.message);
+    } finally {
+      // Refresh either way so the UI never gets stuck out of sync with the
+      // backend after a transient error.
+      await refresh();
     }
   }
 

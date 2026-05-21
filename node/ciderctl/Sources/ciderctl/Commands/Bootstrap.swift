@@ -39,18 +39,20 @@ struct Bootstrap: ParsableCommand {
         FileHandle.standardError.write(Data("""
 
         ─── First-time bootstrap ─────────────────────────────────────
-        A window will open showing the VM. Inside the VM:
-          1. Finish Setup Assistant. Create user `admin`.
-          2. System Settings → General → Sharing → enable Remote Login.
-          3. Open Terminal and run:
+        A window will open showing the VM. Configure it however you
+        want. The dashboard needs at minimum:
 
-             mkdir -p ~/.ssh && chmod 700 ~/.ssh
-             cat >> ~/.ssh/authorized_keys <<'EOF'
-        \(pubkey)
-        EOF
-             chmod 600 ~/.ssh/authorized_keys
+          • SSH reachable as user `admin` with this pubkey in
+            ~/.ssh/authorized_keys:
+            \(pubkey)
 
-          4. Apple menu → Shut Down. The window closes; ciderctl exits.
+          • VNC reachable on port 5900 with whatever auth method you
+            prefer. If you set a legacy VNC password, that's the
+            credential the in-browser viewer will use (configurable in
+            the backend as CIDER_VNC_PASSWORD, defaults to "cider").
+
+        When done, Apple menu → Shut Down. ciderctl exits and writes
+        bootstrap.marker so the dashboard knows the base is ready.
         ──────────────────────────────────────────────────────────────
 
         """.utf8))

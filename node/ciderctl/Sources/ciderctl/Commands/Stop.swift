@@ -14,6 +14,13 @@ struct Stop: ParsableCommand {
     var timeout: Int = 30
 
     func run() throws {
+        try Self.stop(id: id, timeout: timeout)
+    }
+
+    /// Plain entry point so other commands (Delete) can stop a sandbox without
+    /// going through ArgumentParser — instantiating `Stop()` directly leaves
+    /// `@Option` defaults uninitialized and traps at runtime.
+    static func stop(id: String, timeout: Int = 30) throws {
         let bundle = VMBundle(url: Paths.vmDir(id: id))
         guard let pid = bundle.readPID() else { return }
 

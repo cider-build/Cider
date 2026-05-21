@@ -5,6 +5,7 @@ from pydantic import BaseModel, EmailStr
 from sqlmodel import Session as DbSession
 from sqlmodel import select
 
+from .. import ws_tickets
 from ..config import settings
 from ..deps import CurrentUser, Db
 from ..models import Org, OrgMembership, OrgRole, Session, User
@@ -150,3 +151,18 @@ def logout(response: Response, db: Db, user: CurrentUser) -> Response:
 @router.get("/me", response_model=MeOut)
 def me(db: Db, user: CurrentUser) -> MeOut:
     return _me(user, _resolve_org(db, user))
+
+
+class WSTicketOut(BaseModel):
+    ticket: str
+
+
+@router.post("/ws-ticket", response_model=WSTicketOut)
+def ws_ticket(user: CurrentUser) -> WSTicketOut:
+    """Mint a one-shot, short-lived ticket for WebSocket auth.
+
+    The dashboard calls this via HTTP (which carries the session cookie),
+    then appends the ticket to a WS URL as ?ticket=… since the SameSite=Lax
+    cookie won't ride along on a cross-origin WS upgrade.
+    """
+    return WSTicketOut(ticket=ws_tickets.issue(user.id))

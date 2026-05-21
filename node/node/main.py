@@ -25,6 +25,10 @@ class ExecOut(BaseModel):
     exit_code: int
 
 
+class IPOut(BaseModel):
+    ip: str
+
+
 class HealthOut(BaseModel):
     ok: bool
     active: int
@@ -96,6 +100,15 @@ async def exec_in_sandbox(sandbox_id: str, body: ExecIn) -> ExecOut:
     except ciderctl.CtlError as e:
         raise _ctl_error(e)
     return ExecOut(stdout=result.stdout, stderr=result.stderr, exit_code=result.exit_code)
+
+
+@app.get("/sandboxes/{sandbox_id}/ip", response_model=IPOut)
+async def sandbox_ip(sandbox_id: str) -> IPOut:
+    try:
+        address = await ciderctl.ip(sandbox_id)
+    except ciderctl.CtlError as e:
+        raise _ctl_error(e)
+    return IPOut(ip=address)
 
 
 @app.delete("/sandboxes/{sandbox_id}", status_code=status.HTTP_204_NO_CONTENT)

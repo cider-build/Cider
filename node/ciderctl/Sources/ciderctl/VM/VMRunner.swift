@@ -78,15 +78,22 @@ enum VMRunner {
         // Memory balloon
         vmc.memoryBalloonDevices = [VZVirtioTraditionalMemoryBalloonDeviceConfiguration()]
 
-        if graphical {
-            let graphics = VZMacGraphicsDeviceConfiguration()
-            graphics.displays = [
-                VZMacGraphicsDisplayConfiguration(widthInPixels: 1920, heightInPixels: 1200, pixelsPerInch: 72)
-            ]
-            vmc.graphicsDevices = [graphics]
-            vmc.keyboards = [VZUSBKeyboardConfiguration()]
-            vmc.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
-        }
+        // Display + input. We attach these for *every* run, not just the
+        // windowed bootstrap: macOS only runs WindowServer (= produces a
+        // framebuffer VNC/Screen Sharing can serve) when there's a graphics
+        // device attached. Without this, a headless `ciderctl run` boots a
+        // VM whose desktop is permanently blank.
+        let graphics = VZMacGraphicsDeviceConfiguration()
+        graphics.displays = [
+            VZMacGraphicsDisplayConfiguration(widthInPixels: 1920, heightInPixels: 1200, pixelsPerInch: 72)
+        ]
+        vmc.graphicsDevices = [graphics]
+        vmc.keyboards = [VZUSBKeyboardConfiguration()]
+        vmc.pointingDevices = [VZUSBScreenCoordinatePointingDeviceConfiguration()]
+        // `graphical` is retained for callers that might want to branch later
+        // (e.g. audio); for now both windowed and headless boots use the same
+        // hardware set.
+        _ = graphical
 
         try vmc.validate()
         return vmc

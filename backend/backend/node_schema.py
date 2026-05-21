@@ -18,3 +18,7 @@ class NodeExecResponse(BaseModel):
     stdout: str
     stderr: str
     exit_code: int
+
+
+class NodeIPResponse(BaseModel):
+    ip: str

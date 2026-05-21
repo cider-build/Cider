@@ -82,6 +82,12 @@ export interface ExecResult {
   exit_code: number;
 }
 
+export interface ConnectInfo {
+  ip: string;
+  vnc_url: string;
+  ssh_url: string;
+}
+
 // ── Endpoints ──────────────────────────────────────
 
 export const auth = {
@@ -91,6 +97,8 @@ export const auth = {
     request<Me>("/auth/login", { method: "POST", body: JSON.stringify(b) }),
   logout: () => request<void>("/auth/logout", { method: "POST" }),
   me: () => request<Me>("/auth/me"),
+  wsTicket: () =>
+    request<{ ticket: string }>("/auth/ws-ticket", { method: "POST" }),
 };
 
 export const nodes = {
@@ -109,5 +117,6 @@ export const sandboxes = {
       method: "POST",
       body: JSON.stringify({ command }),
     }),
+  connect: (id: string) => request<ConnectInfo>(`/sandboxes/${id}/connect`),
   remove: (id: string) => request<void>(`/sandboxes/${id}`, { method: "DELETE" }),
 };

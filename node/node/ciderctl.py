@@ -76,6 +76,14 @@ def spawn_run(sandbox_id: str) -> None:
     )
 
 
+async def ip(sandbox_id: str) -> str:
+    output = await _run("ip", sandbox_id)
+    address = output.strip()
+    if not address:
+        raise CtlError(-1, "ciderctl ip returned empty output")
+    return address
+
+
 async def exec_command(sandbox_id: str, command: str) -> ExecResult:
     output = await _run("exec", sandbox_id, command, timeout=config.EXEC_TIMEOUT_SECONDS)
     try:

@@ -13,6 +13,11 @@ class Settings(BaseSettings):
     health_ping_interval_seconds: float = 10.0
     health_ping_timeout_seconds: float = 3.0
 
+    # macOS Screen Sharing legacy-VNC password configured inside each sandbox VM.
+    # Baked into the vnc:// URL so the Connect button doesn't prompt. Override
+    # via CIDER_VNC_PASSWORD if you want a different shared secret.
+    vnc_password: str = "TEST1234!"
+
     model_config = SettingsConfigDict(env_prefix="CIDER_", env_file=".env", extra="ignore")
 
 

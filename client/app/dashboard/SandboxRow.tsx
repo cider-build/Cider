@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import { APIError, SandboxStatus, sandboxes, type ExecResult, type Sandbox } from "@/lib/api";
@@ -72,6 +73,16 @@ export default function SandboxRow({ sandbox, nodeName, onRemove }: Props) {
         </button>
         <div className="panel-row-status">
           <span className={`status-pill status-${sandbox.status}`}>{sandbox.status}</span>
+          {canExec && (
+            <Link
+              className="panel-row-connect"
+              href={`/dashboard/view/${sandbox.id}`}
+              aria-label={`View ${sandbox.id} screen`}
+              title="Open screen in browser"
+            >
+              View
+            </Link>
+          )}
           <button
             className="panel-row-remove"
             onClick={() => onRemove(sandbox.id)}
