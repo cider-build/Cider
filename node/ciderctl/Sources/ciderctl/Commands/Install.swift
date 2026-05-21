@@ -18,7 +18,7 @@ struct Install: ParsableCommand {
     var cpus: Int = 4
 
     @Option(name: .long, help: "Memory in GiB.")
-    var memory: Int = 8
+    var memory: Int = 3
 
     @Option(name: .long, help: "Disk size in GiB.")
     var disk: Int = 64

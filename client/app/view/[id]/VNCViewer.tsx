@@ -55,29 +55,20 @@ export default function VNCViewer({ sandboxId, vncPassword }: Props) {
         wsProtocols: ["binary"],
       });
 
-      instance.viewOnly = false;
+      // macOS doesn't render the cursor as part of the framebuffer it sends,
+      // and the Cursor pseudo-encoding doesn't always land cleanly through
+      // noVNC. showDotCursor guarantees there's *some* visible cursor.
+      instance.showDotCursor = true;
+      // Lower compression = less server CPU + lower latency; we're on a local
+      // socket so saving bytes isn't the bottleneck.
+      instance.compressionLevel = 1;
+      instance.qualityLevel = 6;
+      // CSS-scale the framebuffer to fit the window. We also ask the server to
+      // resize but Apple Screen Sharing doesn't honor it, so scaleViewport is
+      // what actually delivers "fits on screen".
       instance.scaleViewport = true;
-      instance.resizeSession = false;
+      instance.resizeSession = true;
       instance.background = "#0f172a";
-
-      const log = (label: string) => (e: Event) => {
-        const detail = (e as CustomEvent).detail;
-        // eslint-disable-next-line no-console
-        console.log(`[vnc] ${label}`, detail ?? "");
-      };
-
-      // Surface every noVNC event we know about so we can see where it stalls.
-      [
-        "connect",
-        "disconnect",
-        "credentialsrequired",
-        "securityfailure",
-        "serververification",
-        "capabilities",
-        "desktopname",
-        "clipboard",
-        "bell",
-      ].forEach((name) => instance.addEventListener(name, log(name)));
 
       instance.addEventListener("connect", () => {
         setStatus("connected");
@@ -93,12 +84,7 @@ export default function VNCViewer({ sandboxId, vncPassword }: Props) {
         setStatus("error");
         setError(`VNC auth failed: ${detail?.reason || "unknown"}`);
       });
-      instance.addEventListener("credentialsrequired", (e: Event) => {
-        const types = (e as CustomEvent<{ types?: string[] }>).detail?.types;
-        setPhase(`sending credentials (${types?.join(",") ?? "password"})`);
-        // Apple's Screen Sharing offers ARD auth (type 30) which needs both
-        // username + password; legacy VNC (type 2) needs just password. Provide
-        // both — noVNC ignores extras for whatever type it ended up picking.
+      instance.addEventListener("credentialsrequired", () => {
         instance.sendCredentials({ username: "admin", password: vncPassword });
       });
 
@@ -122,15 +108,18 @@ export default function VNCViewer({ sandboxId, vncPassword }: Props) {
 
   return (
     <div className="vnc-shell">
-      <div className="vnc-status" data-status={status}>
-        <span className={`vnc-dot vnc-dot-${status}`} />
-        <span className="vnc-status-label">
-          {status === "connecting" && `${phase} (${elapsed}s)`}
-          {status === "connected" && "Connected"}
-          {status === "disconnected" && "Disconnected"}
-          {status === "error" && (error || "Error")}
-        </span>
-      </div>
+      {/* Status overlay only while we're not actually connected — once the
+          desktop is live, get out of the way. */}
+      {status !== "connected" && (
+        <div className="vnc-status" data-status={status}>
+          <span className={`vnc-dot vnc-dot-${status}`} />
+          <span className="vnc-status-label">
+            {status === "connecting" && `${phase} (${elapsed}s)`}
+            {status === "disconnected" && "Disconnected"}
+            {status === "error" && (error || "Error")}
+          </span>
+        </div>
+      )}
       <div ref={containerRef} className="vnc-canvas" />
     </div>
   );

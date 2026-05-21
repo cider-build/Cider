@@ -11,7 +11,13 @@ declare module "@novnc/novnc" {
     viewOnly: boolean;
     scaleViewport: boolean;
     resizeSession: boolean;
+    showDotCursor: boolean;
     background: string;
+    qualityLevel: number;
+    compressionLevel: number;
+    clipViewport: boolean;
+    dragViewport: boolean;
+    focusOnClick: boolean;
     addEventListener(type: string, listener: (event: Event) => void): void;
     removeEventListener(type: string, listener: (event: Event) => void): void;
     disconnect(): void;

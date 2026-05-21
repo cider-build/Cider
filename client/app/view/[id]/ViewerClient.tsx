@@ -20,28 +20,25 @@ export default function ViewerClient({ sandboxId }: { sandboxId: string }) {
     })();
   }, [sandboxId]);
 
-  // The backend embeds the VNC password in the vnc:// URL it returns.
-  // Parse it out client-side so the password isn't hardcoded in two places.
   const password = info ? extractVncPassword(info.vnc_url) : "";
 
   return (
     <div className="viewer-shell">
-      <header className="viewer-header">
-        <Link href="/dashboard" className="viewer-back" aria-label="Back to dashboard">
-          ← Dashboard
-        </Link>
-        <span className="viewer-id">sandbox {sandboxId.slice(0, 8)}</span>
-        {info && <span className="viewer-ip">{info.ip}</span>}
-      </header>
-      <div className="viewer-body">
-        {error ? (
-          <p className="viewer-error">{error}</p>
-        ) : info ? (
-          <VNCViewer sandboxId={sandboxId} vncPassword={password} />
-        ) : (
-          <p className="viewer-loading">Resolving sandbox…</p>
-        )}
-      </div>
+      <Link
+        href="/dashboard"
+        className="viewer-back-floating"
+        aria-label="Back to dashboard"
+        title="Back to dashboard"
+      >
+        ←
+      </Link>
+      {error ? (
+        <p className="viewer-error">{error}</p>
+      ) : info ? (
+        <VNCViewer sandboxId={sandboxId} vncPassword={password} />
+      ) : (
+        <p className="viewer-loading">Resolving sandbox…</p>
+      )}
     </div>
   );
 }

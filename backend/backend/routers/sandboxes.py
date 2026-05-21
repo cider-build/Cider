@@ -1,4 +1,5 @@
 import asyncio
+import socket
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
@@ -12,7 +13,13 @@ from ..db import engine
 from ..deps import CurrentOrg, Db
 from ..models import Node, Org, OrgMembership, Sandbox, SandboxStatus, Session, User
 from ..models._time import utcnow
-from ..node_schema import NodeCreateRequest, NodeExecRequest, NodeExecResponse, NodeIPResponse
+from ..node_schema import (
+    NodeCreateRequest,
+    NodeCreateResponse,
+    NodeExecRequest,
+    NodeExecResponse,
+    NodeIPResponse,
+)
 
 router = APIRouter(prefix="/sandboxes", tags=["sandboxes"])
 
@@ -82,20 +89,19 @@ def list_sandboxes(db: Db, org: CurrentOrg) -> list[SandboxOut]:
 async def create_sandbox(body: CreateIn, db: Db, org: CurrentOrg) -> SandboxOut:
     node = _get_org_node(db, org, body.node_id)
 
-    sb = Sandbox(org_id=org.id, node_id=node.id, status=SandboxStatus.pending)
+    # Node picks the id (pulls from its warm pool when possible, falls back to
+    # a fresh clone otherwise). We mirror whatever id it returns into our DB.
+    result = await node_client.call(
+        "POST",
+        node.url,
+        "/sandboxes",
+        body=NodeCreateRequest(),
+        response_model=NodeCreateResponse,
+    )
+
+    sb = Sandbox(id=result.id, org_id=org.id, node_id=node.id, status=SandboxStatus.running)
     db.add(sb)
     db.commit()
-    db.refresh(sb)
-
-    try:
-        await node_client.fire(
-            "POST", node.url, "/sandboxes", body=NodeCreateRequest(id=sb.id)
-        )
-    except HTTPException:
-        _mark_status(db, sb, SandboxStatus.failed)
-        raise
-
-    _mark_status(db, sb, SandboxStatus.running)
     db.refresh(sb)
     return _to_out(sb)
 
@@ -223,6 +229,16 @@ async def vnc_websocket(websocket: WebSocket, sandbox_id: str) -> None:
         await websocket.close(code=1011, reason=f"VNC connect failed: {e}")
         return
 
+    # Disable Nagle on the upstream TCP socket. RFB sends a lot of small control
+    # messages (FramebufferUpdateRequest, keystrokes, pointer moves); Nagle was
+    # batching them and adding ~40ms latency hops per interaction.
+    upstream_sock = writer.get_extra_info("socket")
+    if upstream_sock is not None:
+        try:
+            upstream_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
+
     # noVNC's default subprotocol. Accepting it makes the browser happy; the
     # bytes themselves are raw RFB regardless.
     await websocket.accept(subprotocol="binary")
@@ -274,8 +290,12 @@ async def vnc_websocket(websocket: WebSocket, sandbox_id: str) -> None:
                     await websocket.send_bytes(count_byte + types)
 
             # 3) From here on it's all opaque encoded data — pure passthrough.
+            # Big reads keep WS frame count low: a Tight-encoded framebuffer
+            # update for a Retina-ish display is often 50-500KB, and breaking
+            # it into 8KB chunks meant 10-60 WS frames per refresh, each with
+            # an asyncio + Starlette hop.
             while True:
-                data = await reader.read(8192)
+                data = await reader.read(65536)
                 if not data:
                     break
                 await websocket.send_bytes(data)

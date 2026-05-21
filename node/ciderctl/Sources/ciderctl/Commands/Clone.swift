@@ -34,9 +34,17 @@ struct Clone: ParsableCommand {
         }
 
         let target = VMBundle(url: targetURL)
-        var cfg = try target.loadConfig()
-        cfg.macAddress = VMRunner.randomMAC()
-        try target.saveConfig(cfg)
+
+        // Cold-boot clones get a fresh MAC so multiple can coexist on the host
+        // vmnet bridge. Snapshot-restore clones MUST keep base's MAC because
+        // the saved state has the MAC baked into the network device's runtime
+        // state — mismatch leaves networking dead in the restored guest.
+        // The trade-off: only one snapshot-restore clone at a time per base.
+        if !target.hasState {
+            var cfg = try target.loadConfig()
+            cfg.macAddress = VMRunner.randomMAC()
+            try target.saveConfig(cfg)
+        }
         target.clearPID()
 
         FileHandle.standardOutput.write(Data("\(targetURL.path)\n".utf8))

@@ -7,6 +7,11 @@ from pydantic import BaseModel
 
 
 class NodeCreateRequest(BaseModel):
+    # Empty body: node picks the id (usually from the warm pool).
+    pass
+
+
+class NodeCreateResponse(BaseModel):
     id: str
 
 

@@ -76,9 +76,9 @@ export default function SandboxRow({ sandbox, nodeName, onRemove }: Props) {
           {canExec && (
             <Link
               className="panel-row-connect"
-              href={`/dashboard/view/${sandbox.id}`}
+              href={`/view/${sandbox.id}`}
               aria-label={`View ${sandbox.id} screen`}
-              title="Open screen in browser"
+              title="Open screen in browser (full window)"
             >
               View
             </Link>

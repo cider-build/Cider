@@ -7,6 +7,7 @@ import Foundation
 ///   disk.img        # boot disk (sparse, APFS-cloneable)
 ///   nvram.bin       # NVRAM
 ///   aux.bin         # MacAuxiliaryStorage
+///   state.bin       # OPTIONAL: VZ saveMachineState snapshot (RAM+CPU)
 ///   vm.pid          # written when running headless (deleted on stop)
 struct VMBundle {
     let url: URL
@@ -15,11 +16,13 @@ struct VMBundle {
     var diskURL: URL { url.appendingPathComponent("disk.img") }
     var nvramURL: URL { url.appendingPathComponent("nvram.bin") }
     var auxURL: URL { url.appendingPathComponent("aux.bin") }
+    var stateURL: URL { url.appendingPathComponent("state.bin") }
     var pidURL: URL { url.appendingPathComponent("vm.pid") }
 
     var exists: Bool { FileManager.default.fileExists(atPath: url.path) }
     var hasDisk: Bool { FileManager.default.fileExists(atPath: diskURL.path) }
     var hasConfig: Bool { FileManager.default.fileExists(atPath: configURL.path) }
+    var hasState: Bool { FileManager.default.fileExists(atPath: stateURL.path) }
     var isInstalled: Bool { hasDisk && hasConfig && FileManager.default.fileExists(atPath: auxURL.path) }
 
     func create() throws {
@@ -64,7 +67,7 @@ struct VMConfig: Codable {
 
     static let `default` = VMConfig(
         cpuCount: 4,
-        memorySizeBytes: 8 * 1024 * 1024 * 1024,
+        memorySizeBytes: 3 * 1024 * 1024 * 1024,
         diskSizeBytes: 64 * 1024 * 1024 * 1024,
         macAddress: "",
         sshUser: "admin"

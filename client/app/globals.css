@@ -574,56 +574,41 @@ input {
 /* ── Viewer page ───────────────────────────────────── */
 
 .viewer-shell {
-  display: flex;
-  flex-direction: column;
-  min-height: calc(100vh - 50px);
-  margin: -32px -28px;
+  position: fixed;
+  inset: 0;
   background: #0f172a;
+  overflow: hidden;
 }
 
-.viewer-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 12px 24px;
-  background: rgba(15, 23, 42, 0.95);
-  color: #f1f5f9;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  font-size: 13px;
-}
-
-.viewer-back {
-  color: #cbd5e1;
-  text-decoration: none;
-  font-weight: 500;
-}
-
-.viewer-back:hover {
-  color: #fff;
-}
-
-.viewer-id {
-  font-family: var(--font-mono);
-  color: #94a3b8;
-}
-
-.viewer-ip {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  color: #94a3b8;
-  font-size: 12px;
-}
-
-.viewer-body {
-  flex: 1;
+.viewer-back-floating {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.55);
+  backdrop-filter: blur(8px);
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 18px;
+  font-weight: 500;
+  opacity: 0.6;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+
+.viewer-back-floating:hover {
+  opacity: 1;
+  background: rgba(15, 23, 42, 0.85);
 }
 
 .viewer-loading,
 .viewer-error {
+  margin: auto;
   color: #cbd5e1;
   font-size: 14px;
 }
@@ -633,22 +618,27 @@ input {
 }
 
 .vnc-shell {
-  position: relative;
-  width: 100%;
-  max-width: 1600px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  position: absolute;
+  inset: 0;
 }
 
 .vnc-status {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  padding: 6px 12px;
+  background: rgba(15, 23, 42, 0.7);
   color: #cbd5e1;
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
   font-family: var(--font-mono);
+  font-size: 12px;
 }
+
 
 .vnc-dot {
   display: inline-block;
@@ -684,10 +674,23 @@ input {
 
 .vnc-canvas {
   width: 100%;
-  aspect-ratio: 16 / 10;
+  height: 100%;
   background: #000;
-  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
+}
+
+/* Belt-and-suspenders: even if noVNC's autoscale gets the container size
+   wrong, CSS max-* constraints guarantee the canvas can't exceed the box.
+   The browser preserves the canvas's intrinsic aspect ratio when it has to
+   shrink either dimension. */
+.vnc-canvas canvas {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
 }
 
 /* ── Health & status indicators ────────────────────── */

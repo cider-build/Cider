@@ -8,6 +8,7 @@ struct CiderCtl: ParsableCommand {
         subcommands: [
             Install.self,
             Bootstrap.self,
+            Snapshot.self,
             Clone.self,
             Run.self,
             IP.self,
