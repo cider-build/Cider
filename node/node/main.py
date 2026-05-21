@@ -1,89 +1,109 @@
-import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException
-from sqlmodel import Session, SQLModel, select
+from fastapi import FastAPI, HTTPException, status
+from pydantic import BaseModel
 
-from . import sandbox as runtime
-from .models import Sandbox, init, session
-
-MAX_SANDBOXES = int(os.environ.get("MAX_SANDBOXES", "2"))
+from . import ciderctl, config
 
 
-class CreateIn(SQLModel):
+class CreateIn(BaseModel):
     id: str
 
 
-class ExecIn(SQLModel):
+class ExecIn(BaseModel):
     command: str
 
 
-class ExecOut(SQLModel):
+class CreateOut(BaseModel):
+    id: str
+
+
+class ExecOut(BaseModel):
     stdout: str
     stderr: str
     exit_code: int
 
 
-class HealthOut(SQLModel):
+class HealthOut(BaseModel):
     ok: bool
     active: int
     capacity: int
+    base_bundle: str
+    base_ready: bool
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init()
     yield
 
 
 app = FastAPI(title="Cider Node", lifespan=lifespan)
 
 
-def _active_count(db: Session) -> int:
-    return len(db.exec(select(Sandbox).where(Sandbox.status == "running")).all())
+def _ctl_error(e: ciderctl.CtlError) -> HTTPException:
+    return HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, f"ciderctl: {e}")
+
+
+def _bootstrap_marker() -> Path:
+    return Path(config.BASE_BUNDLE, "bootstrap.marker")
+
+
+async def _active_count() -> int:
+    sandboxes = await ciderctl.list_sandboxes()
+    return sum(1 for s in sandboxes if s.running)
 
 
 @app.get("/health", response_model=HealthOut)
-def health(db: Session = Depends(session)) -> HealthOut:
-    return HealthOut(ok=True, active=_active_count(db), capacity=MAX_SANDBOXES)
-
-
-@app.post("/sandboxes", response_model=Sandbox)
-def create_sandbox(body: CreateIn, db: Session = Depends(session)) -> Sandbox:
-    if _active_count(db) >= MAX_SANDBOXES:
-        raise HTTPException(409, "node at capacity")
-
-    sb = Sandbox(id=body.id, created_at=datetime.now(timezone.utc), status="running")
-    db.add(sb)
+async def health() -> HealthOut:
     try:
-        db.commit()
-    except Exception as e:
-        raise HTTPException(400, f"could not create: {e}")
-    db.refresh(sb)
+        active = await _active_count()
+    except ciderctl.CtlError:
+        active = 0
+    return HealthOut(
+        ok=True,
+        active=active,
+        capacity=config.MAX_SANDBOXES,
+        base_bundle=config.BASE_BUNDLE,
+        base_ready=_bootstrap_marker().exists(),
+    )
 
-    runtime.create(sb.id)
-    return sb
+
+@app.post("/sandboxes", response_model=CreateOut, status_code=status.HTTP_201_CREATED)
+async def create_sandbox(body: CreateIn) -> CreateOut:
+    if not _bootstrap_marker().exists():
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            f"base bundle not bootstrapped yet; run `ciderctl bootstrap {config.BASE_BUNDLE}` first",
+        )
+
+    if await _active_count() >= config.MAX_SANDBOXES:
+        raise HTTPException(status.HTTP_409_CONFLICT, "node at capacity")
+
+    try:
+        await ciderctl.clone(body.id)
+    except ciderctl.CtlError as e:
+        raise _ctl_error(e)
+
+    ciderctl.spawn_run(body.id)
+    return CreateOut(id=body.id)
 
 
 @app.post("/sandboxes/{sandbox_id}/exec", response_model=ExecOut)
-def exec_command(sandbox_id: str, body: ExecIn, db: Session = Depends(session)) -> ExecOut:
-    sb = db.get(Sandbox, sandbox_id)
-    if not sb or sb.status != "running":
-        raise HTTPException(404, f"sandbox {sandbox_id} not found")
-    stdout, stderr, exit_code = runtime.exec_command(sandbox_id, body.command)
-    return ExecOut(stdout=stdout, stderr=stderr, exit_code=exit_code)
+async def exec_in_sandbox(sandbox_id: str, body: ExecIn) -> ExecOut:
+    try:
+        result = await ciderctl.exec_command(sandbox_id, body.command)
+    except ciderctl.CtlError as e:
+        raise _ctl_error(e)
+    return ExecOut(stdout=result.stdout, stderr=result.stderr, exit_code=result.exit_code)
 
 
-@app.delete("/sandboxes/{sandbox_id}")
-def delete_sandbox(sandbox_id: str, db: Session = Depends(session)) -> dict:
-    sb = db.get(Sandbox, sandbox_id)
-    if not sb:
-        raise HTTPException(404, f"sandbox {sandbox_id} not found")
-    db.delete(sb)
-    db.commit()
-    runtime.delete(sandbox_id)
-    return {"ok": True}
+@app.delete("/sandboxes/{sandbox_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_sandbox(sandbox_id: str) -> None:
+    try:
+        await ciderctl.delete(sandbox_id)
+    except ciderctl.CtlError as e:
+        raise _ctl_error(e)
 
 
 def run() -> None:
