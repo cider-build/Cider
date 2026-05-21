@@ -8,14 +8,22 @@ next-env.d.ts
 __pycache__/
 *.pyc
 
+# swift
+.build/
+.swiftpm/
+
 # sqlite
 *.db
 *.db-journal
+*.db-shm
 
 # env
 .env
 .env.*
 !.env.example
+
+# editor / agent
+.claude/
 
 # os
 .DS_Store
