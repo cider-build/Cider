@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     # via CIDER_VNC_PASSWORD if you want a different shared secret.
     vnc_password: str = "TEST1234!"
 
+    # Cloudflare Turnstile secret used to verify the marketing-page waitlist
+    # form. Unset in dev; the /waitlist endpoint refuses to write without it.
+    turnstile_secret_key: str = ""
+
     model_config = SettingsConfigDict(env_prefix="CIDER_", env_file=".env", extra="ignore")
 
 

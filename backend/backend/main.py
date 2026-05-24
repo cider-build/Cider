@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from . import reconciler
 from .config import settings
 from .db import init_db
-from .routers import auth, nodes, orgs, sandboxes
+from .routers import auth, nodes, orgs, sandboxes, waitlist
 
 
 class HealthCheckOut(BaseModel):
@@ -42,6 +42,7 @@ app.include_router(auth.router)
 app.include_router(orgs.router)
 app.include_router(nodes.router)
 app.include_router(sandboxes.router)
+app.include_router(waitlist.router)
 
 
 @app.get("/health", response_model=HealthCheckOut)

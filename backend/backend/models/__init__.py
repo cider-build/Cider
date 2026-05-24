@@ -3,6 +3,7 @@ from .org import Org, OrgMembership, OrgRole
 from .sandbox import ACTIVE_STATUSES, Sandbox, SandboxStatus
 from .session import Session
 from .user import User
+from .waitlist import WaitlistEntry
 
 __all__ = [
     "ACTIVE_STATUSES",
@@ -14,4 +15,5 @@ __all__ = [
     "SandboxStatus",
     "Session",
     "User",
+    "WaitlistEntry",
 ]
