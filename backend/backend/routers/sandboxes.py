@@ -11,7 +11,16 @@ from .. import node_client, ws_tickets
 from ..config import settings
 from ..db import engine
 from ..deps import CurrentOrg, Db
-from ..models import Node, Org, OrgMembership, Sandbox, SandboxStatus, Session, User
+from ..models import (
+    ACTIVE_STATUSES,
+    Node,
+    Org,
+    OrgMembership,
+    Sandbox,
+    SandboxStatus,
+    Session,
+    User,
+)
 from ..models._time import utcnow
 from ..node_schema import (
     NodeCreateRequest,
@@ -43,6 +52,9 @@ class SandboxOut(BaseModel):
     node_id: str
     status: SandboxStatus
     created_at: datetime
+    last_seen_at: datetime | None
+    stopped_reason: str | None
+    stopped_at: datetime | None
 
 
 class ConnectOut(BaseModel):
@@ -52,7 +64,15 @@ class ConnectOut(BaseModel):
 
 
 def _to_out(sb: Sandbox) -> SandboxOut:
-    return SandboxOut(id=sb.id, node_id=sb.node_id, status=sb.status, created_at=sb.created_at)
+    return SandboxOut(
+        id=sb.id,
+        node_id=sb.node_id,
+        status=sb.status,
+        created_at=sb.created_at,
+        last_seen_at=sb.last_seen_at,
+        stopped_reason=sb.stopped_reason,
+        stopped_at=sb.stopped_at,
+    )
 
 
 def _get_org_node(db: DbSession, org: Org, node_id: str) -> Node:
@@ -64,7 +84,9 @@ def _get_org_node(db: DbSession, org: Org, node_id: str) -> Node:
 
 def _get_org_sandbox(db: DbSession, org: Org, sandbox_id: str) -> Sandbox:
     sb = db.get(Sandbox, sandbox_id)
-    if not sb or sb.org_id != org.id or sb.status == SandboxStatus.deleted:
+    # Hide terminal states (deleted/stopped/failed) from /exec, /connect, etc.
+    # — the underlying VM is no longer ours to talk to.
+    if not sb or sb.org_id != org.id or sb.status not in ACTIVE_STATUSES:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "sandbox not found")
     return sb
 
@@ -99,7 +121,17 @@ async def create_sandbox(body: CreateIn, db: Db, org: CurrentOrg) -> SandboxOut:
         response_model=NodeCreateResponse,
     )
 
-    sb = Sandbox(id=result.id, org_id=org.id, node_id=node.id, status=SandboxStatus.running)
+    # Seed last_seen_at on create so the reconciler doesn't trip the
+    # "node unreachable too long" path on a brand-new sandbox while it
+    # waits for the first reconcile tick to confirm it.
+    now = utcnow()
+    sb = Sandbox(
+        id=result.id,
+        org_id=org.id,
+        node_id=node.id,
+        status=SandboxStatus.running,
+        last_seen_at=now,
+    )
     db.add(sb)
     db.commit()
     db.refresh(sb)
@@ -318,18 +350,24 @@ async def vnc_websocket(websocket: WebSocket, sandbox_id: str) -> None:
 
 @router.delete("/{sandbox_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sandbox(sandbox_id: str, db: Db, org: CurrentOrg) -> None:
-    sb = _get_org_sandbox(db, org, sandbox_id)
-    node = db.get(Node, sb.node_id)
+    sb = db.get(Sandbox, sandbox_id)
+    if not sb or sb.org_id != org.id or sb.status == SandboxStatus.deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "sandbox not found")
 
-    # Best-effort: tell the node to tear the VM down, but always mark the
-    # sandbox deleted in our DB so the dashboard never gets stuck with a row
-    # the user can't get rid of. An orphan VM can be cleaned via
-    # `ciderctl delete <id>` directly.
-    if node is not None:
-        try:
-            await node_client.fire("DELETE", node.url, f"/sandboxes/{sb.id}")
-        except HTTPException:
-            pass
+    # Only try to teardown if we still believe it's alive. If the reconciler
+    # already marked it stopped (or it was never running), skip the node call
+    # — there's nothing to tear down and the node would just return 404.
+    if sb.status in ACTIVE_STATUSES:
+        node = db.get(Node, sb.node_id)
+        if node is not None:
+            try:
+                await node_client.fire("DELETE", node.url, f"/sandboxes/{sb.id}")
+            except HTTPException:
+                # Best-effort: dashboard should never get stuck with a row
+                # the user can't dismiss. An orphan VM can be cleaned via
+                # `ciderctl delete <id>` directly, and the reconciler's
+                # orphan-reap will catch it on the next tick anyway.
+                pass
 
     sb.status = SandboxStatus.deleted
     sb.deleted_at = utcnow()

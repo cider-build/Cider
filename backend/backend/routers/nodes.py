@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from ..deps import CurrentOrg, Db
-from ..models import Node
+from ..models import ACTIVE_STATUSES, Node, Sandbox, SandboxStatus
+from ..models._time import utcnow
 
 router = APIRouter(prefix="/nodes", tags=["nodes"])
 
@@ -54,5 +55,21 @@ def delete_node(node_id: str, db: Db, org: CurrentOrg) -> None:
     node = db.get(Node, node_id)
     if not node or node.org_id != org.id:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "node not found")
+
+    # Mark any live sandboxes on this node as stopped before dropping the
+    # node row. Otherwise their node_id points at nothing and the reconciler
+    # can't reach them to update their state.
+    now = utcnow()
+    live = db.exec(
+        select(Sandbox).where(
+            Sandbox.node_id == node.id, Sandbox.status.in_(ACTIVE_STATUSES)
+        )
+    ).all()
+    for sb in live:
+        sb.status = SandboxStatus.stopped
+        sb.stopped_reason = f"node {node.name} removed"
+        sb.stopped_at = now
+        db.add(sb)
+
     db.delete(node)
     db.commit()

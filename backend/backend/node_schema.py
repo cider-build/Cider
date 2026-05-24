@@ -27,3 +27,12 @@ class NodeExecResponse(BaseModel):
 
 class NodeIPResponse(BaseModel):
     ip: str
+
+
+class NodeSandboxState(BaseModel):
+    id: str
+    running: bool
+
+
+class NodeListResponse(BaseModel):
+    items: list[NodeSandboxState]

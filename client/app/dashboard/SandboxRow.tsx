@@ -68,7 +68,12 @@ export default function SandboxRow({ sandbox, nodeName, onRemove }: Props) {
           </span>
           <span>
             <span className="panel-row-name">{sandbox.id.slice(0, 8)}</span>
-            <span className="panel-row-meta">node {nodeName}</span>
+            <span className="panel-row-meta">
+              node {nodeName}
+              {sandbox.status === SandboxStatus.stopped && sandbox.stopped_reason
+                ? ` · ${sandbox.stopped_reason}`
+                : null}
+            </span>
           </span>
         </button>
         <div className="panel-row-status">

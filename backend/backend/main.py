@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from . import health
+from . import reconciler
 from .config import settings
 from .db import init_db
 from .routers import auth, nodes, orgs, sandboxes
@@ -19,7 +19,7 @@ class HealthCheckOut(BaseModel):
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    task = asyncio.create_task(health.run_forever())
+    task = asyncio.create_task(reconciler.run_forever())
     try:
         yield
     finally:

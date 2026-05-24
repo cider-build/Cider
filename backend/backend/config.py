@@ -12,6 +12,11 @@ class Settings(BaseSettings):
     node_request_timeout: float = 30.0
     health_ping_interval_seconds: float = 10.0
     health_ping_timeout_seconds: float = 3.0
+    # How long a sandbox can go without a reconciler confirmation before we
+    # give up on its node and mark it stopped. Set ~3x the ping interval so a
+    # transient blip doesn't kill live sandboxes, but a real node outage
+    # clears them within ~30s. last_seen_at is bumped every successful tick.
+    sandbox_unseen_grace_seconds: float = 30.0
 
     # macOS Screen Sharing legacy-VNC password configured inside each sandbox VM.
     # Baked into the vnc:// URL so the Connect button doesn't prompt. Override

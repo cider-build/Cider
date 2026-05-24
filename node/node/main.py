@@ -44,6 +44,16 @@ class HealthOut(BaseModel):
     warm: int
 
 
+class SandboxStateOut(BaseModel):
+    id: str
+    running: bool
+
+
+class ListOut(BaseModel):
+    # Excludes warm-pool ids: the backend should never see warm VMs as orphans.
+    items: list[SandboxStateOut]
+
+
 _warm_pool = WarmPool()
 
 
@@ -100,6 +110,24 @@ async def health() -> HealthOut:
         base_bundle=config.BASE_BUNDLE,
         base_ready=_bootstrap_marker().exists(),
         warm=warm_ready,
+    )
+
+
+@app.get("/sandboxes", response_model=ListOut)
+async def list_user_sandboxes() -> ListOut:
+    """Sandboxes the backend should see — ciderctl's view minus warm-pool VMs.
+
+    The backend uses this to reconcile its DB against ground truth: anything
+    backend thinks is running but doesn't appear here (or appears with
+    running=false) gets marked stopped.
+    """
+    try:
+        all_sandboxes = await ciderctl.list_sandboxes()
+    except ciderctl.CtlError as e:
+        raise _ctl_error(e)
+    warm = set(_warm_pool.warm_ids())
+    return ListOut(
+        items=[SandboxStateOut(id=s.id, running=s.running) for s in all_sandboxes if s.id not in warm]
     )
 
 

@@ -64,6 +64,7 @@ export interface Node {
 export const SandboxStatus = {
   pending: "pending",
   running: "running",
+  stopped: "stopped",
   deleted: "deleted",
   failed: "failed",
 } as const;
@@ -74,6 +75,9 @@ export interface Sandbox {
   node_id: string;
   status: SandboxStatus;
   created_at: string;
+  last_seen_at: string | null;
+  stopped_reason: string | null;
+  stopped_at: string | null;
 }
 
 export interface ExecResult {

@@ -742,6 +742,11 @@ input {
   color: #dc2626;
 }
 
+.status-stopped {
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-secondary);
+}
+
 .status-deleted {
   background: var(--surface-muted);
   color: var(--muted);

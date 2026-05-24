@@ -21,6 +21,10 @@ export default function NodesPanel() {
 
   useEffect(() => {
     refresh();
+    // Mirror SandboxesPanel: keep the health-dot fresh so a node going
+    // unreachable is visible within seconds, not on the next manual click.
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
   }, [refresh]);
 
   async function onAdd(e: React.FormEvent) {

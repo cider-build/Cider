@@ -25,6 +25,12 @@ export default function SandboxesPanel() {
 
   useEffect(() => {
     refresh();
+    // Lightweight polling so backend reconciler updates (a sandbox flipping
+    // to `stopped` because its VM died, a node going unreachable) show up
+    // without forcing the user to reload. 5s matches our visual freshness
+    // budget without hammering the API.
+    const id = setInterval(refresh, 5000);
+    return () => clearInterval(id);
   }, [refresh]);
 
   async function onCreate(e: React.FormEvent) {
