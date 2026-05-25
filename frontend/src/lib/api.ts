@@ -1,4 +1,8 @@
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
+const API_URL = import.meta.env.VITE_API_URL;
+
+if (!API_URL) {
+  throw new Error("VITE_API_URL is required.");
+}
 
 export class APIError extends Error {
   constructor(public status: number, message: string) {
@@ -25,7 +29,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
           ? body.detail
           : JSON.stringify(body.detail ?? body);
     } catch {
-      // fall back to statusText
+      detail = r.statusText;
     }
     throw new APIError(r.status, detail);
   }

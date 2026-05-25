@@ -13,7 +13,7 @@ from .warm_pool import WarmPool
 class CreateIn(BaseModel):
     # Optional: callers can pin a specific id (testing/debug). When omitted
     # (the normal flow from the backend), the node picks one — usually from
-    # the warm pool, falling back to a fresh clone.
+    # the warm pool. If no warm sandbox is ready, it creates one synchronously.
     id: str | None = None
 
 
@@ -62,15 +62,19 @@ async def lifespan(app: FastAPI):
     # Reconcile with the world: adopt persisted warm ids that are still alive,
     # kill anything else we don't recognize (orphans from a crash/reload).
     await _warm_pool.adopt_or_clean()
-    # Kick off the initial pool fill + periodic self-heal loop.
-    top_up_task = asyncio.create_task(_warm_pool.top_up())
-    maintain_task = asyncio.create_task(_warm_pool.maintain())
+    pool_tasks: list[asyncio.Task[None]] = []
+    if _bootstrap_marker().exists():
+        # Kick off the initial pool fill + periodic self-heal loop.
+        pool_tasks = [
+            asyncio.create_task(_warm_pool.top_up()),
+            asyncio.create_task(_warm_pool.maintain()),
+        ]
     try:
         yield
     finally:
-        for t in (top_up_task, maintain_task):
+        for t in pool_tasks:
             t.cancel()
-        for t in (top_up_task, maintain_task):
+        for t in pool_tasks:
             with contextlib.suppress(asyncio.CancelledError):
                 await t
         # Don't kill warm VMs on shutdown — the persisted ids let the next
@@ -97,8 +101,8 @@ async def _active_count() -> int:
 async def health() -> HealthOut:
     try:
         running = await _active_count()
-    except ciderctl.CtlError:
-        running = 0
+    except ciderctl.CtlError as e:
+        raise _ctl_error(e)
     warm_ready = len(_warm_pool.warm_ids())
     # Subtract everything the pool owns (ready + still-booting) to get
     # what the user actually sees as a live sandbox.
@@ -191,4 +195,4 @@ async def delete_sandbox(sandbox_id: str) -> None:
 def run() -> None:
     import uvicorn
 
-    uvicorn.run("node.main:app", host="0.0.0.0", port=8001, reload=False)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=False)

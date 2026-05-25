@@ -42,7 +42,8 @@ export default function VNCViewer({ sandboxId, vncPassword }: Props) {
       const { default: RFB } = await import("@novnc/novnc");
       if (cancelled || !containerRef.current) return;
 
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const apiUrl = import.meta.env.VITE_API_URL;
+      if (!apiUrl) throw new Error("VITE_API_URL is required.");
       const wsUrl =
         apiUrl.replace(/^http/, "ws") +
         `/sandboxes/${sandboxId}/vnc?ticket=${encodeURIComponent(ticket)}`;

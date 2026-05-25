@@ -8,12 +8,12 @@ def _resolve_ciderctl() -> str:
     if explicit:
         return explicit
     found = shutil.which("ciderctl")
-    if found:
-        return found
-    # Fall back to the in-repo release build.
-    here = Path(__file__).resolve()
-    repo_bin = here.parents[1] / "ciderctl" / ".build" / "release" / "ciderctl"
-    return str(repo_bin)
+    if not found:
+        raise RuntimeError(
+            "ciderctl binary not found. Build node/vm-cli and set CIDER_CTL, "
+            "or install ciderctl on PATH."
+        )
+    return found
 
 
 CIDERCTL = _resolve_ciderctl()

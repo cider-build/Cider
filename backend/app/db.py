@@ -13,8 +13,8 @@ engine = create_engine(
 
 
 # Columns added to existing tables after first deploy. SQLModel's create_all
-# only handles new tables, so for additive changes on the dev SQLite DB we
-# fall back to a tiny in-process migration table.
+# only handles new tables, so additive changes on the dev SQLite DB use a
+# small in-process migration table.
 _ADDITIVE_COLUMNS: list[tuple[str, str, str]] = [
     ("sandbox", "last_seen_at", "DATETIME"),
     ("sandbox", "stopped_reason", "VARCHAR"),

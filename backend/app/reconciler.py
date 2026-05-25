@@ -116,9 +116,8 @@ async def _expire_unseen(db: DbSession, node: Node, now: datetime) -> None:
         )
     ).all()
     for sb in stale:
-        # last_seen_at is None for sandboxes from before this field existed —
-        # the grace window kicks in from `now` rather than retroactively
-        # killing them. created_at gives us a sane fallback timestamp.
+        # last_seen_at is None for sandboxes from before this field existed.
+        # Use created_at as the anchor so old rows are not killed retroactively.
         anchor = sb.last_seen_at or sb.created_at
         if anchor and anchor < cutoff:
             _mark_stopped(sb, f"node {node.name} unreachable", now)

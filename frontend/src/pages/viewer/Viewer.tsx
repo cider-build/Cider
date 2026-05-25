@@ -6,12 +6,15 @@ import VNCViewer from "./VNCViewer";
 
 export default function Viewer() {
   const { id } = useParams<{ id: string }>();
-  const sandboxId = id ?? "";
+  const sandboxId = id;
   const [info, setInfo] = useState<ConnectInfo | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!sandboxId) return;
+    if (!sandboxId) {
+      setError("Missing sandbox id.");
+      return;
+    }
     (async () => {
       try {
         setInfo(await sandboxes.connect(sandboxId));
@@ -35,7 +38,7 @@ export default function Viewer() {
       </Link>
       {error ? (
         <p className="viewer-error">{error}</p>
-      ) : info ? (
+      ) : info && sandboxId ? (
         <VNCViewer sandboxId={sandboxId} vncPassword={password} />
       ) : (
         <p className="viewer-loading">Resolving sandbox…</p>

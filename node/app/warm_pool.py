@@ -15,7 +15,6 @@ State persistence:
 """
 import asyncio
 import json
-import os
 import secrets
 from pathlib import Path
 
@@ -69,20 +68,14 @@ class WarmPool:
         this, we leak running VMs across restarts and eat through the 2-VM cap.
         """
         async with self._lock:
-            try:
-                running = await ciderctl.list_sandboxes()
-            except ciderctl.CtlError:
-                return
+            running = await ciderctl.list_sandboxes()
             running_ids = {s.id for s in running if s.running}
             adopted = [i for i in self._warm if i in running_ids]
             orphans = running_ids - set(self._warm)
             self._warm = adopted
             self._persist()
         for o in orphans:
-            try:
-                await ciderctl.delete(o)
-            except ciderctl.CtlError:
-                pass
+            await ciderctl.delete(o)
 
     async def acquire(self) -> str:
         """Hand out a warm sandbox id if one's ready; otherwise cold-allocate.
@@ -125,13 +118,7 @@ class WarmPool:
         spawned_ids: list[str] = []
         try:
             for _ in range(need):
-                try:
-                    sid = await self._spawn_and_wait()
-                    spawned_ids.append(sid)
-                except (ciderctl.CtlError, OSError):
-                    # One spawn failed; keep going so we at least get the rest.
-                    # The periodic maintain task will retry the missing slot.
-                    continue
+                spawned_ids.append(await self._spawn_and_wait())
         finally:
             async with self._lock:
                 self._spawning -= need
@@ -142,22 +129,13 @@ class WarmPool:
         """Background loop: re-check the pool every 30s and top up missing
         slots. Self-heals transient spawn failures and refills after restarts."""
         while True:
-            try:
-                await asyncio.sleep(30)
-                await self.top_up()
-            except asyncio.CancelledError:
-                raise
-            except Exception:
-                # Don't let one bad iteration kill the loop.
-                pass
+            await asyncio.sleep(30)
+            await self.top_up()
 
     # ── internals ──────────────────────────────────────
 
     async def _safe_running_count(self) -> int:
-        try:
-            sandboxes = await ciderctl.list_sandboxes()
-        except ciderctl.CtlError:
-            return 0
+        sandboxes = await ciderctl.list_sandboxes()
         return sum(1 for s in sandboxes if s.running)
 
     def _compute_need_locked(self, running: int) -> int:
@@ -182,9 +160,6 @@ class WarmPool:
             await ciderctl.exec_command(sandbox_id, "true")
         except ciderctl.CtlError:
             # Boot failed or timed out. Clean up so we don't leak.
-            try:
-                await ciderctl.delete(sandbox_id)
-            except ciderctl.CtlError:
-                pass
+            await ciderctl.delete(sandbox_id)
             raise
         return sandbox_id
