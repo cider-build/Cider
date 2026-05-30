@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Route, Routes, useLocation } from "react-router-dom";
 
 import { AuthProvider } from "@/lib/auth";
+import CliAuth from "@/pages/CliAuth";
 import Dashboard from "@/pages/dashboard/Dashboard";
 import DashboardChrome from "@/pages/dashboard/DashboardChrome";
 import Home from "@/pages/Home";
@@ -14,6 +15,7 @@ const TITLES: Record<string, string> = {
   "/login": "Sign in — Cider",
   "/signup": "Sign up — Cider",
   "/dashboard": "Dashboard — Cider",
+  "/cli-auth": "Authorize CLI — Cider",
 };
 
 function DocumentTitle() {
@@ -53,6 +55,7 @@ export default function App() {
             </AuthProvider>
           }
         />
+        <Route path="/cli-auth" element={<CliAuth />} />
       </Routes>
     </>
   );

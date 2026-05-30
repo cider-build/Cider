@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -53,4 +54,12 @@ def health_check() -> HealthCheckOut:
 def run() -> None:
     import uvicorn
 
+    # Surface app.* logger output (node_client, reconciler, routers) at INFO.
+    # Uvicorn handles its own loggers but leaves the root alone, so without
+    # this our INFO calls would be swallowed.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)-7s %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=False)

@@ -1,11 +1,15 @@
 import asyncio
+import logging
 import socket
+import time
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
 from sqlmodel import Session as DbSession
 from sqlmodel import select
+
+log = logging.getLogger(__name__)
 
 from .. import node_client, ws_tickets
 from ..config import settings
@@ -111,14 +115,24 @@ def list_sandboxes(db: Db, org: CurrentOrg) -> list[SandboxOut]:
 async def create_sandbox(body: CreateIn, db: Db, org: CurrentOrg) -> SandboxOut:
     node = _get_org_node(db, org, body.node_id)
 
-    # Node picks the id (pulls from its warm pool when possible, falls back to
-    # a fresh clone otherwise). We mirror whatever id it returns into our DB.
+    log.info(
+        "create_sandbox: org=%s node=%s (%s) — calling node",
+        org.id, node.id, node.url,
+    )
+    started = time.monotonic()
+
+    # Node picks the id (pulls from its warm pool when possible, otherwise
+    # creates a fresh clone). We mirror whatever id it returns into our DB.
     result = await node_client.call(
         "POST",
         node.url,
         "/sandboxes",
         body=NodeCreateRequest(),
         response_model=NodeCreateResponse,
+    )
+    log.info(
+        "create_sandbox: node returned id=%s in %.2fs",
+        result.id, time.monotonic() - started,
     )
 
     # Seed last_seen_at on create so the reconciler doesn't trip the
@@ -365,7 +379,7 @@ async def delete_sandbox(sandbox_id: str, db: Db, org: CurrentOrg) -> None:
             except HTTPException:
                 # Best-effort: dashboard should never get stuck with a row
                 # the user can't dismiss. An orphan VM can be cleaned via
-                # `ciderctl delete <id>` directly, and the reconciler's
+                # `tart delete <id>` directly, and the reconciler's
                 # orphan-reap will catch it on the next tick anyway.
                 pass
 

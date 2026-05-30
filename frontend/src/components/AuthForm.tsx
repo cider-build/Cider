@@ -1,8 +1,16 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import CiderLogo from "@/components/CiderLogo";
 import { APIError, auth } from "@/lib/api";
+
+// Only honor same-origin relative redirects so a malicious link like
+// /login?redirect=https://evil.example can't bounce a fresh session offsite.
+function safeRedirect(raw: string | null): string {
+  if (!raw) return "/dashboard";
+  if (!raw.startsWith("/") || raw.startsWith("//")) return "/dashboard";
+  return raw;
+}
 
 type Mode = "login" | "signup";
 
@@ -25,6 +33,7 @@ const COPY: Record<Mode, { title: string; submit: string; alt: { text: string; h
 
 export default function AuthForm({ mode }: Props) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
@@ -32,6 +41,10 @@ export default function AuthForm({ mode }: Props) {
   const [loading, setLoading] = useState(false);
 
   const copy = COPY[mode];
+  const redirect = safeRedirect(searchParams.get("redirect"));
+  const altHref = searchParams.get("redirect")
+    ? `${copy.alt.href}?redirect=${encodeURIComponent(searchParams.get("redirect")!)}`
+    : copy.alt.href;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -43,7 +56,7 @@ export default function AuthForm({ mode }: Props) {
       } else {
         await auth.login({ email, password });
       }
-      navigate("/dashboard", { replace: true });
+      navigate(redirect, { replace: true });
     } catch (err) {
       const message =
         err instanceof APIError
@@ -110,7 +123,7 @@ export default function AuthForm({ mode }: Props) {
 
         <p className="auth-alt">
           {copy.alt.text}{" "}
-          <Link to={copy.alt.href}>{copy.alt.label}</Link>
+          <Link to={altHref}>{copy.alt.label}</Link>
         </p>
       </div>
     </main>

@@ -2,7 +2,7 @@
 
 Every tick (~10s):
   1. Ping each registered node's /health.
-  2. For reachable nodes: fetch /sandboxes (ciderctl truth minus warm pool),
+  2. For reachable nodes: fetch /sandboxes (Tart truth minus warm pool),
      bump last_seen_at on rows we observe, mark missing/dead rows as stopped,
      and ask the node to reap any orphan VMs that don't belong to anyone.
   3. For unreachable nodes: leave sandboxes alone for now — they only get
@@ -63,7 +63,7 @@ def _mark_stopped(sb: Sandbox, reason: str, now: datetime) -> None:
 async def _reconcile_reachable(
     db: DbSession, node: Node, payload: NodeListResponse, now: datetime
 ) -> list[str]:
-    """Sync DB sandboxes for one node against ciderctl truth. Returns the
+    """Sync DB sandboxes for one node against Tart truth. Returns the
     list of orphan ids the caller should ask the node to delete."""
     state_by_id = {s.id: s for s in payload.items}
 

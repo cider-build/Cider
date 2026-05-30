@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import Cookie, Depends, HTTPException, status
+from fastapi import Cookie, Depends, Header, HTTPException, status
 from sqlmodel import Session as DbSession
 from sqlmodel import select
 
@@ -18,10 +18,23 @@ def _session_cookie(
     return request_cookie
 
 
+def _bearer_token(authorization: str | None) -> str | None:
+    if not authorization:
+        return None
+    scheme, _, token = authorization.partition(" ")
+    if scheme.lower() != "bearer" or not token:
+        return None
+    return token.strip() or None
+
+
 def current_user(
     db: Db,
-    token: Annotated[str | None, Depends(_session_cookie)],
+    cookie_token: Annotated[str | None, Depends(_session_cookie)],
+    authorization: Annotated[str | None, Header()] = None,
 ) -> User:
+    # CLI/API clients send the session token as `Authorization: Bearer <token>`;
+    # the dashboard sends it via the httponly cookie. Either works.
+    token = _bearer_token(authorization) or cookie_token
     if not token:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
 

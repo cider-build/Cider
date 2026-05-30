@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import { APIError, auth as authApi, type Me } from "./api";
 
@@ -29,6 +29,7 @@ export function AuthProvider({
   const [me, setMe] = useState<Me | null>(null);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
+  const location = useLocation();
 
   const refresh = useCallback(async () => {
     try {
@@ -50,9 +51,16 @@ export function AuthProvider({
 
   useEffect(() => {
     if (!loading && requireAuth && !me) {
-      navigate("/login", { replace: true });
+      // Carry the current path through login so flows like /cli-auth land
+      // back where they started after the user signs in.
+      const target = `${location.pathname}${location.search}`;
+      const next =
+        target === "/login"
+          ? "/login"
+          : `/login?redirect=${encodeURIComponent(target)}`;
+      navigate(next, { replace: true });
     }
-  }, [loading, requireAuth, me, navigate]);
+  }, [loading, requireAuth, me, navigate, location.pathname, location.search]);
 
   const logout = useCallback(async () => {
     try {

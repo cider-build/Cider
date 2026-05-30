@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # macOS Screen Sharing legacy-VNC password configured inside each sandbox VM.
     # Baked into the vnc:// URL so the Connect button doesn't prompt. Override
     # via CIDER_VNC_PASSWORD if you want a different shared secret.
-    vnc_password: str = "TEST1234!"
+    vnc_password: str = "Test1234!"
 
     # Cloudflare Turnstile secret used to verify the marketing-page waitlist
     # form. Unset in dev; the /waitlist endpoint refuses to write without it.

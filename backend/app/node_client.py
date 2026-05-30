@@ -3,6 +3,8 @@
 Callers pass a Pydantic response model; this module handles transport, status-code
 forwarding, and validation. No untyped dicts cross the boundary.
 """
+import logging
+import time
 from typing import TypeVar
 
 import httpx
@@ -10,6 +12,8 @@ from fastapi import HTTPException, status
 from pydantic import BaseModel, ValidationError
 
 from .config import settings
+
+log = logging.getLogger(__name__)
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -32,13 +36,25 @@ async def _send(
 ) -> httpx.Response:
     url = f"{node_url.rstrip('/')}{path}"
     payload = body.model_dump() if body is not None else None
+    log.info("%s %s start", method, url)
+    started = time.monotonic()
     try:
         async with httpx.AsyncClient(timeout=settings.node_request_timeout) as client:
-            return await client.request(method, url, json=payload)
+            response = await client.request(method, url, json=payload)
     except httpx.TimeoutException:
+        elapsed = time.monotonic() - started
+        log.warning(
+            "%s %s TIMEOUT after %.1fs (limit=%.1fs) — node likely cold-spawning",
+            method, url, elapsed, settings.node_request_timeout,
+        )
         raise HTTPException(status.HTTP_504_GATEWAY_TIMEOUT, f"node {node_url} timed out")
     except httpx.HTTPError as e:
+        elapsed = time.monotonic() - started
+        log.warning("%s %s UNREACHABLE after %.1fs: %s", method, url, elapsed, e)
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, f"node {node_url} unreachable: {e}")
+    elapsed = time.monotonic() - started
+    log.info("%s %s -> %d in %.2fs", method, url, response.status_code, elapsed)
+    return response
 
 
 async def call(

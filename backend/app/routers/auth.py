@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr
@@ -166,3 +167,23 @@ def ws_ticket(user: CurrentUser) -> WSTicketOut:
     cookie won't ride along on a cross-origin WS upgrade.
     """
     return WSTicketOut(ticket=ws_tickets.issue(user.id))
+
+
+class CLITokenOut(BaseModel):
+    token: str
+    expires_at: datetime
+
+
+@router.post("/cli-token", response_model=CLITokenOut, status_code=status.HTTP_201_CREATED)
+def cli_token(db: Db, user: CurrentUser) -> CLITokenOut:
+    """Mint a session token that a CLI tool can send as `Authorization: Bearer`.
+
+    Authenticated via the dashboard session (cookie). The returned token has
+    the same TTL as a browser session and is stored in the same Session table,
+    so `/auth/logout` revokes both at once.
+    """
+    token = new_session_token()
+    expires_at = session_expiry()
+    db.add(Session(token=token, user_id=user.id, expires_at=expires_at))
+    db.commit()
+    return CLITokenOut(token=token, expires_at=expires_at)

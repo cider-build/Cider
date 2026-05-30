@@ -107,6 +107,10 @@ export const auth = {
   me: () => request<Me>("/auth/me"),
   wsTicket: () =>
     request<{ ticket: string }>("/auth/ws-ticket", { method: "POST" }),
+  cliToken: () =>
+    request<{ token: string; expires_at: string }>("/auth/cli-token", {
+      method: "POST",
+    }),
 };
 
 export const nodes = {
