@@ -124,12 +124,22 @@ async def clone(sandbox_id: str) -> None:
     await _run("set", sandbox_id, "--random-mac")
 
 
-def spawn_run(sandbox_id: str) -> None:
+def _dir_share_arg(mount_path: str) -> str:
+    if ":" in mount_path:
+        raise TartError(-1, "mounted paths cannot contain ':'")
+    return f"cider:{mount_path}"
+
+
+def spawn_run(sandbox_id: str, mount_path: str | None = None) -> None:
     _RUN_LOG_DIR.mkdir(parents=True, exist_ok=True)
     log_path = _RUN_LOG_DIR / f"{sandbox_id}.log"
     log_fh = open(log_path, "ab")
+    cmd = [config.TART, "run", "--no-graphics"]
+    if mount_path is not None:
+        cmd.extend(["--dir", _dir_share_arg(mount_path)])
+    cmd.append(sandbox_id)
     proc = subprocess.Popen(
-        [config.TART, "run", "--no-graphics", sandbox_id],
+        cmd,
         stdout=log_fh,
         stderr=subprocess.STDOUT,
         stdin=subprocess.DEVNULL,

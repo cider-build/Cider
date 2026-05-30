@@ -1,6 +1,6 @@
-import { resolve as resolvePath } from "node:path";
+import { lstat } from "node:fs/promises";
+import { basename, dirname, join, resolve as resolvePath } from "node:path";
 import { spawn } from "node:child_process";
-import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import open from "open";
 
@@ -13,6 +13,41 @@ import {
 import { makeClient, APIError } from "../lib/api.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const GUEST_SHARE_ROOT = "/Volumes/My Shared Files/cider";
+
+function shellQuote(value) {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+async function resolveOpenTarget(pathArg) {
+  const hostPath = resolvePath(pathArg || process.cwd());
+  if (hostPath.includes(":")) {
+    throw new Error("Cider cannot mount paths containing ':'.");
+  }
+
+  let info;
+  try {
+    info = await lstat(hostPath);
+  } catch (err) {
+    if (err.code === "ENOENT") {
+      throw new Error(`Path does not exist: ${hostPath}`);
+    }
+    throw err;
+  }
+
+  const hostMountPath = info.isDirectory() ? hostPath : dirname(hostPath);
+  const guestOpenPath = info.isDirectory()
+    ? GUEST_SHARE_ROOT
+    : `${GUEST_SHARE_ROOT}/${basename(hostPath)}`;
+  const guestTerminalPath = info.isDirectory() ? guestOpenPath : GUEST_SHARE_ROOT;
+  return {
+    hostPath,
+    hostMountPath,
+    guestOpenPath,
+    guestTerminalPath,
+    linkDir: hostMountPath,
+  };
+}
 
 function extractVncPassword(vncUrl) {
   const match = vncUrl.match(/^vnc:\/\/[^:]*:([^@]+)@/);
@@ -69,21 +104,15 @@ function pickNode(nodes, requestedId) {
     }
     return found;
   }
-  // Prefer a healthy node, falling back to "least recently bad" so we still
-  // try *something* when nothing has reported a green ping yet.
   const healthy = nodes.filter((n) => n.last_ping_ok === true);
   if (healthy.length > 0) {
     healthy.sort((a, b) => (b.last_ping_at || "").localeCompare(a.last_ping_at || ""));
     return healthy[0];
   }
-  if (nodes.length > 0) {
-    process.stderr.write(
-      "warning: no node has reported a successful ping; picking the first one anyway.\n"
-    );
-    return nodes[0];
-  }
   throw new Error(
-    "No compute nodes are registered. Add one in the dashboard first."
+    nodes.length > 0
+      ? "No healthy compute nodes are available."
+      : "No compute nodes are registered. Add one in the dashboard first."
   );
 }
 
@@ -93,32 +122,36 @@ async function findExisting(client, id) {
   return all.find((s) => s.id === id) ?? null;
 }
 
-export async function openCommand(dirArg, opts) {
+export async function openCommand(pathArg, opts) {
   const config = await readConfig();
   if (!config.token) {
     process.stderr.write("Not signed in. Run `cider login` first.\n");
     process.exit(1);
   }
 
-  const dir = resolvePath(dirArg || process.cwd());
+  const target = await resolveOpenTarget(pathArg);
   const client = makeClient(config);
 
   let sandbox = null;
-  const link = await readSandboxLink(dir);
+  let createdLink = null;
+  const link = await readSandboxLink(target.linkDir);
   if (link && !opts.fresh) {
     const existing = await findExisting(client, link.sandbox_id);
     if (existing && existing.status === "running") {
+      if (link.mount_path !== target.hostMountPath) {
+        throw new Error(
+          `Linked sandbox ${link.sandbox_id} was not created for ${target.hostPath}. Run \`cider open ${shellQuote(target.hostPath)} --fresh\` to create one with this mount.`
+        );
+      }
       sandbox = existing;
       process.stdout.write(
-        `Reusing sandbox ${sandbox.id} (linked to ${dir}).\n`
+        `Reusing sandbox ${sandbox.id} (linked to ${target.linkDir}).\n`
       );
     } else {
-      // Link points at something we can't use anymore — drop it and fall
-      // through to creating a fresh sandbox.
       process.stdout.write(
         `Linked sandbox ${link.sandbox_id} is ${existing ? existing.status : "missing"}; creating a new one.\n`
       );
-      await clearSandboxLink(dir);
+      await clearSandboxLink(target.linkDir);
     }
   }
 
@@ -127,7 +160,9 @@ export async function openCommand(dirArg, opts) {
     const node = pickNode(nodes, opts.node);
     process.stdout.write(`Creating sandbox on node ${node.name} (${node.id})...\n`);
     try {
-      sandbox = await client.createSandbox(node.id);
+      sandbox = await client.createSandbox(node.id, {
+        mountPath: target.hostMountPath,
+      });
     } catch (err) {
       if (err instanceof APIError && err.status === 401) {
         process.stderr.write(
@@ -137,14 +172,15 @@ export async function openCommand(dirArg, opts) {
       }
       throw err;
     }
-    await writeSandboxLink(dir, {
+    createdLink = {
       sandbox_id: sandbox.id,
       node_id: sandbox.node_id,
+      mount_path: target.hostMountPath,
+      guest_path: target.guestOpenPath,
+      terminal_path: target.guestTerminalPath,
       created_at: sandbox.created_at,
-    });
-    process.stdout.write(
-      `Created sandbox ${sandbox.id}. Saved link to ${dir}/.cider/sandbox.json.\n`
-    );
+    };
+    process.stdout.write(`Created sandbox ${sandbox.id}.\n`);
   }
 
   // Connect-info can race the VM's boot — exec/connect both 409 with
@@ -172,6 +208,24 @@ export async function openCommand(dirArg, opts) {
   process.stdout.write(`IP:         ${conn.ip}\n`);
   process.stdout.write(`VNC URL:    ${conn.vnc_url}\n`);
   process.stdout.write(`SSH URL:    ${conn.ssh_url}\n`);
+
+  const openResult = await client.execSandbox(
+    sandbox.id,
+    `/usr/bin/open -a Terminal -- ${shellQuote(target.guestTerminalPath)}`
+  );
+  if (openResult.exit_code !== 0) {
+    await clearSandboxLink(target.linkDir);
+    throw new Error(
+      `Could not open Terminal at ${target.guestTerminalPath} in the VM: ${openResult.stderr || openResult.stdout}`
+    );
+  }
+  if (createdLink) {
+    await writeSandboxLink(target.linkDir, createdLink);
+    process.stdout.write(
+      `Saved link to ${target.linkDir}/.cider/sandbox.json.\n`
+    );
+  }
+  process.stdout.write(`Terminal:   ${target.guestTerminalPath}\n`);
 
   if (opts.open !== false) {
     const password = extractVncPassword(conn.vnc_url);

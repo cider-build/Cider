@@ -1,8 +1,10 @@
 import asyncio
 import contextlib
 import logging
+import shlex
 import time
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel
@@ -15,9 +17,9 @@ log = logging.getLogger(__name__)
 
 class CreateIn(BaseModel):
     # Optional: callers can pin a specific id (testing/debug). When omitted
-    # (the normal flow from the backend), the node picks one — usually from
-    # the warm pool. If no warm sandbox is ready, it creates one synchronously.
+    # and no mount is requested, the node picks one from the warm pool.
     id: str | None = None
+    mount_path: str | None = None
 
 
 class ExecIn(BaseModel):
@@ -26,6 +28,7 @@ class ExecIn(BaseModel):
 
 class CreateOut(BaseModel):
     id: str
+    mount_path: str | None = None
 
 
 class ExecOut(BaseModel):
@@ -102,6 +105,35 @@ async def _active_count() -> int:
     return sum(1 for s in sandboxes if s.running)
 
 
+async def _wait_for_ssh(sandbox_id: str) -> None:
+    deadline = time.monotonic() + config.START_TIMEOUT_SECONDS
+    last_error = "SSH did not become ready"
+    while time.monotonic() < deadline:
+        result = await tart.exec_command(sandbox_id, "true")
+        if result.exit_code == 0:
+            return
+        last_error = result.stderr or result.stdout or f"exit {result.exit_code}"
+        await asyncio.sleep(2)
+    raise tart.TartError(-1, last_error)
+
+
+async def _configure_vnc(sandbox_id: str) -> None:
+    admin_password = shlex.quote(config.VM_ADMIN_PASSWORD)
+    vnc_password = shlex.quote(config.VNC_PASSWORD)
+    command = (
+        f"printf '%s\\n' {admin_password} | sudo -S "
+        "/System/Library/CoreServices/RemoteManagement/ARDAgent.app/"
+        "Contents/Resources/kickstart "
+        "-configure -clientopts "
+        "-setvnclegacy -vnclegacy yes "
+        f"-setvncpw -vncpw {vnc_password} "
+        "-restart -agent"
+    )
+    result = await tart.exec_command(sandbox_id, command)
+    if result.exit_code != 0:
+        raise tart.TartError(result.exit_code, result.stderr or result.stdout)
+
+
 @app.get("/health", response_model=HealthOut)
 async def health() -> HealthOut:
     try:
@@ -161,16 +193,27 @@ async def create_sandbox(body: CreateIn) -> CreateOut:
             status.HTTP_503_SERVICE_UNAVAILABLE,
             f"base Tart VM not found: {config.BASE_VM}",
         )
+    if body.mount_path is not None and not Path(body.mount_path).is_dir():
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            f"mount_path must be a directory on the node: {body.mount_path}",
+        )
+    if body.mount_path is not None and ":" in body.mount_path:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "mount_path cannot contain ':'",
+        )
 
-    if body.id is None:
+    if body.id is None and body.mount_path is None:
         # Normal flow: let the warm pool pick (instant if a warm one's ready).
         try:
             sandbox_id = await _warm_pool.acquire()
         except tart.TartError as e:
             raise _tart_error(e)
     else:
-        # Caller pinned a specific id — clone fresh and boot.
-        if not body.id.startswith(config.SANDBOX_PREFIX):
+        # Pinned ids and host directory mounts require a fresh boot command.
+        sandbox_id = body.id or config.new_sandbox_id()
+        if not sandbox_id.startswith(config.SANDBOX_PREFIX):
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 f"sandbox id must start with {config.SANDBOX_PREFIX!r}",
@@ -179,16 +222,24 @@ async def create_sandbox(body: CreateIn) -> CreateOut:
             log.warning("POST /sandboxes 409: at capacity (max=%d)", config.MAX_SANDBOXES)
             raise HTTPException(status.HTTP_409_CONFLICT, "node at capacity")
         try:
-            await tart.clone(body.id)
+            await tart.clone(sandbox_id)
         except tart.TartError as e:
             raise _tart_error(e)
-        tart.spawn_run(body.id)
-        sandbox_id = body.id
+        tart.spawn_run(sandbox_id, mount_path=body.mount_path)
+        try:
+            await tart.ip(sandbox_id)
+            await _wait_for_ssh(sandbox_id)
+            await _configure_vnc(sandbox_id)
+        except tart.TartError as e:
+            log.warning("POST /sandboxes cold spawn %s failed: %s", sandbox_id, e)
+            with contextlib.suppress(tart.TartError):
+                await tart.delete(sandbox_id)
+            raise _tart_error(e)
 
     log.info(
         "POST /sandboxes -> %s in %.2fs", sandbox_id, time.monotonic() - started
     )
-    return CreateOut(id=sandbox_id)
+    return CreateOut(id=sandbox_id, mount_path=body.mount_path)
 
 
 @app.post("/sandboxes/{sandbox_id}/exec", response_model=ExecOut)

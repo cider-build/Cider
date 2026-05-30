@@ -37,16 +37,16 @@ export async function run(argv) {
     .action(whoamiCommand);
 
   program
-    .command("open [dir]")
+    .command("open [path]")
     .description(
-      "Create or reopen the sandbox linked to a directory and launch Screen Sharing"
+      "Create or reopen a sandbox, mount a local path, and open Terminal in the VM"
     )
     .option("--node <id>", "Use a specific compute node by id")
     .option(
       "--fresh",
       "Ignore any existing .cider/sandbox.json link and create a new sandbox"
     )
-    .option("--no-open", "Print connection URLs without launching Screen Sharing")
+    .option("--no-open", "Open Terminal in the VM without launching Screen Sharing")
     .action(openCommand);
 
   await program.parseAsync(argv);

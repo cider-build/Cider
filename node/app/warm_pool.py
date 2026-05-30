@@ -16,7 +16,6 @@ State persistence:
 import asyncio
 import json
 import logging
-import secrets
 import shlex
 import time
 from pathlib import Path
@@ -29,7 +28,7 @@ _STATE_FILE = Path.home() / ".cider" / "warm-pool.json"
 
 
 def _new_id() -> str:
-    return f"{config.SANDBOX_PREFIX}{secrets.token_hex(16)}"
+    return config.new_sandbox_id()
 
 
 class WarmPool:

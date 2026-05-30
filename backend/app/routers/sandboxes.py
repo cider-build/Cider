@@ -39,6 +39,7 @@ router = APIRouter(prefix="/sandboxes", tags=["sandboxes"])
 
 class CreateIn(BaseModel):
     node_id: str
+    mount_path: str | None = None
 
 
 class ExecIn(BaseModel):
@@ -127,13 +128,19 @@ async def create_sandbox(body: CreateIn, db: Db, org: CurrentOrg) -> SandboxOut:
         "POST",
         node.url,
         "/sandboxes",
-        body=NodeCreateRequest(),
+        body=NodeCreateRequest(mount_path=body.mount_path),
         response_model=NodeCreateResponse,
     )
     log.info(
         "create_sandbox: node returned id=%s in %.2fs",
         result.id, time.monotonic() - started,
     )
+    if body.mount_path is not None and result.mount_path != body.mount_path:
+        await node_client.fire("DELETE", node.url, f"/sandboxes/{result.id}")
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            "node did not create the sandbox with the requested mount_path",
+        )
 
     # Seed last_seen_at on create so the reconciler doesn't trip the
     # "node unreachable too long" path on a brand-new sandbox while it

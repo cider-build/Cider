@@ -1,4 +1,5 @@
 import os
+import secrets
 import shutil
 
 
@@ -24,3 +25,7 @@ SSH_KEY = os.environ.get("CIDER_SSH_KEY", os.path.expanduser("~/.cider/ssh_key")
 SSH_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("SSH_CONNECT_TIMEOUT_SECONDS", "10"))
 VNC_PASSWORD = os.environ.get("CIDER_VNC_PASSWORD", "Test1234!")
 VM_ADMIN_PASSWORD = os.environ.get("CIDER_VM_ADMIN_PASSWORD", "Test1234!")
+
+
+def new_sandbox_id() -> str:
+    return f"{SANDBOX_PREFIX}{secrets.token_hex(16)}"

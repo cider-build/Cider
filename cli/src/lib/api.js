@@ -50,12 +50,17 @@ export function makeClient(config) {
     logout: () => request(config, "/auth/logout", { method: "POST" }),
     listNodes: () => request(config, "/nodes"),
     listSandboxes: () => request(config, "/sandboxes"),
-    createSandbox: (nodeId) =>
+    createSandbox: (nodeId, { mountPath } = {}) =>
       request(config, "/sandboxes", {
         method: "POST",
-        body: { node_id: nodeId },
+        body: { node_id: nodeId, mount_path: mountPath },
       }),
     connectSandbox: (id) => request(config, `/sandboxes/${id}/connect`),
+    execSandbox: (id, command) =>
+      request(config, `/sandboxes/${id}/exec`, {
+        method: "POST",
+        body: { command },
+      }),
     deleteSandbox: (id) =>
       request(config, `/sandboxes/${id}`, { method: "DELETE" }),
   };

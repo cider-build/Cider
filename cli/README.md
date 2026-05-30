@@ -45,19 +45,21 @@ Revokes the stored token on the server and removes `~/.cider/config.json`.
 
 Prints the signed-in user, org, and current API URL.
 
-### `cider open [dir]`
+### `cider open [path]`
 
-Creates or reopens the sandbox linked to a directory and launches Screen
-Sharing.
+Creates or reopens the sandbox linked to a local path, mounts that path into the
+VM, opens Terminal at the mounted directory, and launches Screen Sharing.
 
-- First run in a directory: picks a healthy compute node, calls
-  `POST /sandboxes`, writes `<dir>/.cider/sandbox.json`, and opens Screen
-  Sharing through a local VNC auth shim.
-- Subsequent runs: reads `<dir>/.cider/sandbox.json` and reuses the existing
-  running sandbox.
+- Directories are mounted at `/Volumes/My Shared Files/cider` in the VM.
+- Files mount their parent directory and open Terminal at that guest mount.
+- First run for a path: picks a healthy compute node, calls `POST /sandboxes`,
+  writes `<mounted-dir>/.cider/sandbox.json`, and opens Screen Sharing through a
+  local VNC auth shim.
+- Subsequent runs: reads `<mounted-dir>/.cider/sandbox.json` and reuses the
+  existing running sandbox when it was created for that same path.
 
 Flags:
 
 - `--node <id>` — pin to a specific compute node
 - `--fresh` — ignore the link file and create a new sandbox
-- `--no-open` — print connection URLs without launching Screen Sharing
+- `--no-open` — open Terminal in the VM without launching Screen Sharing

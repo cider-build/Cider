@@ -7,12 +7,12 @@ from pydantic import BaseModel
 
 
 class NodeCreateRequest(BaseModel):
-    # Empty body: node picks the id (usually from the warm pool).
-    pass
+    mount_path: str | None = None
 
 
 class NodeCreateResponse(BaseModel):
     id: str
+    mount_path: str | None = None
 
 
 class NodeExecRequest(BaseModel):
