@@ -3,6 +3,7 @@ import logging
 import socket
 import time
 from datetime import datetime
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect, status
 from pydantic import BaseModel
@@ -65,6 +66,7 @@ class SandboxOut(BaseModel):
 class ConnectOut(BaseModel):
     ip: str
     vnc_url: str
+    screen_sharing_url: str
     ssh_url: str
 
 
@@ -200,6 +202,13 @@ async def connect_info(sandbox_id: str, db: Db, org: CurrentOrg) -> ConnectOut:
         ip=result.ip,
         # Legacy-VNC auth: empty username, shared password set inside the VM.
         vnc_url=f"vnc://:{settings.vnc_password}@{result.ip}",
+        # Native macOS Screen Sharing path. Let Apple's client negotiate ARD/
+        # Apple-specific auth and protocol extensions directly with the guest.
+        screen_sharing_url=(
+            "vnc://"
+            f"admin:{quote(settings.vm_admin_password, safe='')}@{result.ip}"
+            "?quality=adaptive&numVirtualDisplays=0"
+        ),
         ssh_url=f"ssh://admin@{result.ip}",
     )
 

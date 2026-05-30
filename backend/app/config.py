@@ -1,3 +1,4 @@
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -22,6 +23,7 @@ class Settings(BaseSettings):
     # Baked into the vnc:// URL so the Connect button doesn't prompt. Override
     # via CIDER_VNC_PASSWORD if you want a different shared secret.
     vnc_password: str = "Test1234!"
+    vm_admin_password: str = Field(default="Test1234!", validation_alias="CIDER_VM_ADMIN_PASSWORD")
 
     # Cloudflare Turnstile secret used to verify the marketing-page waitlist
     # form. Unset in dev; the /waitlist endpoint refuses to write without it.

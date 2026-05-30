@@ -53,8 +53,8 @@ VM, opens Terminal at the mounted directory, and launches Screen Sharing.
 - Directories are mounted at `/Volumes/My Shared Files/cider` in the VM.
 - Files mount their parent directory and open Terminal at that guest mount.
 - First run for a path: picks a healthy compute node, calls `POST /sandboxes`,
-  writes `<mounted-dir>/.cider/sandbox.json`, and opens Screen Sharing through a
-  local VNC auth shim.
+  writes `<mounted-dir>/.cider/sandbox.json`, and opens native macOS Screen
+  Sharing directly to the VM.
 - Subsequent runs: reads `<mounted-dir>/.cider/sandbox.json` and reuses the
   existing running sandbox when it was created for that same path.
 

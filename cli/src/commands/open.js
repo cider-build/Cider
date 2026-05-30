@@ -1,7 +1,5 @@
 import { lstat } from "node:fs/promises";
-import { basename, dirname, join, resolve as resolvePath } from "node:path";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { basename, dirname, resolve as resolvePath } from "node:path";
 import open from "open";
 
 import {
@@ -12,11 +10,14 @@ import {
 } from "../lib/config.js";
 import { makeClient, APIError } from "../lib/api.js";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 const GUEST_SHARE_ROOT = "/Volumes/My Shared Files/cider";
 
 function shellQuote(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+function redactUrlPassword(url) {
+  return url.replace(/\/\/([^:/@]+):([^@]+)@/, "//$1:***@");
 }
 
 async function resolveOpenTarget(pathArg) {
@@ -47,51 +48,6 @@ async function resolveOpenTarget(pathArg) {
     guestTerminalPath,
     linkDir: hostMountPath,
   };
-}
-
-function extractVncPassword(vncUrl) {
-  const match = vncUrl.match(/^vnc:\/\/[^:]*:([^@]+)@/);
-  if (!match) {
-    throw new Error("Backend did not return a password-bearing VNC URL.");
-  }
-  const password = decodeURIComponent(match[1]);
-  extractVncPassword.lastPassword = password;
-  return password;
-}
-
-function startVncProxy(targetHost, sandboxId) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(
-      process.execPath,
-      [join(__dirname, "../lib/vnc-proxy-child.js"), targetHost, "5900", sandboxId],
-      {
-        detached: true,
-        stdio: ["ignore", "ignore", "ignore", "ipc"],
-        env: { ...process.env, CIDER_VNC_PASSWORD: extractVncPassword.lastPassword },
-      }
-    );
-
-    let settled = false;
-    const settle = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      fn(value);
-    };
-
-    child.on("message", (msg) => {
-      if (msg && msg.ready && Number.isInteger(msg.port)) {
-        child.disconnect();
-        child.unref();
-        settle(resolve, { port: msg.port, pid: child.pid, logPath: msg.logPath });
-      } else if (msg && msg.error) {
-        settle(reject, new Error(msg.error));
-      }
-    });
-    child.on("error", (err) => settle(reject, err));
-    child.on("exit", (code) => {
-      settle(reject, new Error(`VNC proxy exited before it was ready (${code}).`));
-    });
-  });
 }
 
 function pickNode(nodes, requestedId) {
@@ -207,6 +163,7 @@ export async function openCommand(pathArg, opts) {
   process.stdout.write(`\nSandbox:    ${sandbox.id}\n`);
   process.stdout.write(`IP:         ${conn.ip}\n`);
   process.stdout.write(`VNC URL:    ${conn.vnc_url}\n`);
+  process.stdout.write(`Screen:     ${redactUrlPassword(conn.screen_sharing_url)}\n`);
   process.stdout.write(`SSH URL:    ${conn.ssh_url}\n`);
 
   const openResult = await client.execSandbox(
@@ -228,17 +185,9 @@ export async function openCommand(pathArg, opts) {
   process.stdout.write(`Terminal:   ${target.guestTerminalPath}\n`);
 
   if (opts.open !== false) {
-    const password = extractVncPassword(conn.vnc_url);
-    const proxy = await startVncProxy(conn.ip, sandbox.id);
-    const screenSharingUrl =
-      `vnc://:${encodeURIComponent(password)}@127.0.0.1:${proxy.port}`;
-
-    process.stdout.write(
-      `\nOpening Screen Sharing through local VNC auth shim (pid ${proxy.pid}).\n`
-    );
-    process.stdout.write(`Shim log:   ${proxy.logPath}\n`);
+    process.stdout.write("\nOpening native macOS Screen Sharing.\n");
     try {
-      await open(screenSharingUrl);
+      await open(conn.screen_sharing_url);
     } catch (err) {
       process.stderr.write(
         `warning: could not auto-open Screen Sharing: ${err.message}\n`
