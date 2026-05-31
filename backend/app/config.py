@@ -10,7 +10,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://127.0.0.1:3000",
     ]
-    node_request_timeout: float = 30.0
+    node_request_timeout: float = 180.0
     health_ping_interval_seconds: float = 10.0
     health_ping_timeout_seconds: float = 3.0
     # How long a sandbox can go without a reconciler confirmation before we

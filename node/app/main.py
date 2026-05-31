@@ -61,6 +61,7 @@ class ListOut(BaseModel):
 
 
 _warm_pool = WarmPool()
+_creating_ids: set[str] = set()
 
 
 @asynccontextmanager
@@ -169,7 +170,7 @@ async def list_user_sandboxes() -> ListOut:
         all_sandboxes = await tart.list_sandboxes()
     except tart.TartError as e:
         raise _tart_error(e)
-    pool_owned = _warm_pool.claimed_ids()
+    pool_owned = _warm_pool.claimed_ids() | _creating_ids
     return ListOut(
         items=[
             SandboxStateOut(id=s.id, running=s.running)
@@ -213,17 +214,23 @@ async def create_sandbox(body: CreateIn) -> CreateOut:
     else:
         # Pinned ids and host directory mounts require a fresh boot command.
         sandbox_id = body.id or config.new_sandbox_id()
+        _creating_ids.add(sandbox_id)
         if not sandbox_id.startswith(config.SANDBOX_PREFIX):
+            _creating_ids.discard(sandbox_id)
             raise HTTPException(
                 status.HTTP_422_UNPROCESSABLE_ENTITY,
                 f"sandbox id must start with {config.SANDBOX_PREFIX!r}",
             )
         if await _active_count() >= config.MAX_SANDBOXES:
-            log.warning("POST /sandboxes 409: at capacity (max=%d)", config.MAX_SANDBOXES)
-            raise HTTPException(status.HTTP_409_CONFLICT, "node at capacity")
+            freed = body.mount_path is not None and await _warm_pool.free_pool_slot()
+            if not freed or await _active_count() >= config.MAX_SANDBOXES:
+                _creating_ids.discard(sandbox_id)
+                log.warning("POST /sandboxes 409: at capacity (max=%d)", config.MAX_SANDBOXES)
+                raise HTTPException(status.HTTP_409_CONFLICT, "node at capacity")
         try:
             await tart.clone(sandbox_id)
         except tart.TartError as e:
+            _creating_ids.discard(sandbox_id)
             raise _tart_error(e)
         tart.spawn_run(sandbox_id, mount_path=body.mount_path)
         try:
@@ -231,10 +238,12 @@ async def create_sandbox(body: CreateIn) -> CreateOut:
             await _wait_for_ssh(sandbox_id)
             await _configure_vnc(sandbox_id)
         except tart.TartError as e:
+            _creating_ids.discard(sandbox_id)
             log.warning("POST /sandboxes cold spawn %s failed: %s", sandbox_id, e)
             with contextlib.suppress(tart.TartError):
                 await tart.delete(sandbox_id)
             raise _tart_error(e)
+        _creating_ids.discard(sandbox_id)
 
     log.info(
         "POST /sandboxes -> %s in %.2fs", sandbox_id, time.monotonic() - started

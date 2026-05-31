@@ -147,6 +147,21 @@ class WarmPool:
             return
         await self.top_up()
 
+    async def free_pool_slot(self) -> bool:
+        """Delete one pool-owned VM so a mount-specific cold boot has capacity."""
+        async with self._lock:
+            if self._warm:
+                sandbox_id = self._warm.pop()
+                self._persist()
+            elif self._spawning_ids:
+                sandbox_id = next(iter(self._spawning_ids))
+                self._spawning_ids.discard(sandbox_id)
+            else:
+                return False
+        log.info("free_pool_slot: deleting pool-owned sandbox %s", sandbox_id)
+        await tart.delete(sandbox_id)
+        return True
+
     async def top_up(self) -> None:
         """Bring warm count up to MAX_SANDBOXES - active.
 
