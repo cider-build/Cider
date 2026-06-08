@@ -1,53 +1,90 @@
 import { Command } from "commander";
 
-import { loginCommand } from "./commands/login.js";
-import { logoutCommand } from "./commands/logout.js";
-import { whoamiCommand } from "./commands/whoami.js";
-import { openCommand } from "./commands/open.js";
+import { makeClient } from "./lib/api.js";
+import { readConfig } from "./lib/config.js";
+
+function printRows(rows, columns) {
+  if (rows.length === 0) return;
+  const widths = columns.map((column) =>
+    Math.max(column.length, ...rows.map((row) => String(row[column] ?? "").length)),
+  );
+  process.stdout.write(columns.map((column, i) => column.padEnd(widths[i])).join("  ") + "\n");
+  for (const row of rows) {
+    process.stdout.write(
+      columns.map((column, i) => String(row[column] ?? "").padEnd(widths[i])).join("  ") + "\n",
+    );
+  }
+}
+
+function client() {
+  return makeClient(readConfig());
+}
 
 export async function run(argv) {
   const program = new Command();
 
   program
     .name("cider")
-    .description("Command-line interface for cider.build sandboxes")
+    .description("Barebones CLI for the Cider backend")
     .version("0.1.0");
 
-  program
-    .command("login")
-    .description("Sign in via your browser and save the token locally")
-    .option(
-      "--api-url <url>",
-      "Override the backend URL (default: $CIDER_API_URL or http://localhost:8000)"
-    )
-    .option(
-      "--web-url <url>",
-      "Override the dashboard URL (default: $CIDER_WEB_URL or http://localhost:3000)"
-    )
-    .action(loginCommand);
+  const nodes = program.command("nodes").description("Manage nodes");
 
-  program
-    .command("logout")
-    .description("Revoke the saved token and clear local credentials")
-    .action(logoutCommand);
+  nodes
+    .command("list", { isDefault: true })
+    .description("List nodes")
+    .action(async () => {
+      const rows = await client().listNodes();
+      printRows(rows, ["id", "name", "url"]);
+    });
 
-  program
-    .command("whoami")
-    .description("Show the currently signed-in user")
-    .action(whoamiCommand);
+  nodes
+    .command("add <name> <url>")
+    .description("Register a node")
+    .action(async (name, url) => {
+      const node = await client().createNode(name, url);
+      process.stdout.write(`${node.id}\n`);
+    });
 
-  program
-    .command("open [path]")
-    .description(
-      "Create or reopen a sandbox, mount a local path, and open Terminal in the VM"
-    )
-    .option("--node <id>", "Use a specific compute node by id")
-    .option(
-      "--fresh",
-      "Ignore any existing .cider/sandbox.json link and create a new sandbox"
-    )
-    .option("--no-open", "Open Terminal in the VM without launching Screen Sharing")
-    .action(openCommand);
+  nodes
+    .command("delete <id>")
+    .description("Delete a node")
+    .action(async (id) => {
+      await client().deleteNode(id);
+    });
+
+  const sandboxes = program.command("sandboxes").description("Manage sandboxes");
+
+  sandboxes
+    .command("list", { isDefault: true })
+    .description("List sandboxes")
+    .action(async () => {
+      const rows = await client().listSandboxes();
+      printRows(rows, ["id", "node_id", "created_at"]);
+    });
+
+  sandboxes
+    .command("create")
+    .description("Create a sandbox")
+    .option("--node <id>", "Node id. Defaults to the first registered node.")
+    .action(async (options) => {
+      const api = client();
+      let nodeId = options.node;
+      if (!nodeId) {
+        const nodes = await api.listNodes();
+        if (nodes.length === 0) throw new Error("no nodes registered");
+        nodeId = nodes[0].id;
+      }
+      const sandbox = await api.createSandbox(nodeId);
+      process.stdout.write(`${sandbox.id}\n`);
+    });
+
+  sandboxes
+    .command("delete <id>")
+    .description("Delete a sandbox")
+    .action(async (id) => {
+      await client().deleteSandbox(id);
+    });
 
   await program.parseAsync(argv);
 }

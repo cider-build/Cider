@@ -1,61 +1,45 @@
 import { useState, type FormEvent } from "react";
-import { Turnstile, type BoundTurnstileObject } from "react-turnstile";
+import { Turnstile } from "react-turnstile";
 
-import { APIError, waitlist } from "@/lib/api";
+const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY;
 
 export default function WaitlistForm() {
   const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<
-    "idle" | "loading" | "success" | "error"
-  >("idle");
-  const [errorMsg, setErrorMsg] = useState("");
   const [token, setToken] = useState<string | null>(null);
-  const [turnstile, setTurnstile] = useState<BoundTurnstileObject | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+  const [done, setDone] = useState(false);
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!email) return;
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    if (!TURNSTILE_SITE_KEY) return setMessage("Turnstile is not configured.");
+    if (!token) return setMessage("Verification is still loading. Please try again.");
 
-    setStatus("loading");
-    setErrorMsg("");
-
-    // If Turnstile hasn't resolved yet, wait for it (up to 5s)
-    let resolvedToken = token;
-    if (!resolvedToken) {
-      resolvedToken = await new Promise<string | null>((resolve) => {
-        const start = Date.now();
-        const interval = setInterval(() => {
-          if (token) {
-            clearInterval(interval);
-            resolve(token);
-          } else if (Date.now() - start > 5000) {
-            clearInterval(interval);
-            resolve(null);
-          }
-        }, 100);
-      });
-    }
-
-    if (!resolvedToken) {
-      setStatus("error");
-      setErrorMsg("Verification timed out. Please refresh and try again.");
-      return;
-    }
+    setLoading(true);
+    setMessage("");
 
     try {
-      await waitlist.join({ email, turnstile_token: resolvedToken });
-      setStatus("success");
-    } catch (err) {
-      setStatus("error");
-      setErrorMsg(
-        err instanceof APIError ? err.message : "Something went wrong.",
-      );
-      turnstile?.reset();
-      setToken(null);
+      const response = await fetch(`${API_URL.replace(/\/+$/, "")}/waitlist`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, turnstile_token: token }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || "Could not join waitlist.");
+      }
+
+      setDone(true);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not join waitlist.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  if (status === "success") {
+  if (done) {
     return (
       <p className="waitlist-hint" style={{ marginTop: 36 }}>
         You&apos;re on the list. We&apos;ll be in touch.
@@ -65,37 +49,32 @@ export default function WaitlistForm() {
 
   return (
     <>
-      <form onSubmit={handleSubmit} className="waitlist-form">
+      <form onSubmit={submit} className="waitlist-form">
         <input
           type="email"
           value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          onChange={(event) => setEmail(event.target.value)}
           placeholder="you@company.com"
           required
           className="waitlist-input"
           aria-label="Email address"
         />
-        <button
-          type="submit"
-          disabled={status === "loading"}
-          className="waitlist-button"
-        >
-          {status === "loading" ? "Joining…" : "Get Early Access"}
+        <button type="submit" disabled={loading} className="waitlist-button">
+          {loading ? "Joining…" : "Get Early Access"}
         </button>
       </form>
 
-      <Turnstile
-        sitekey={import.meta.env.VITE_TURNSTILE_SITE_KEY!}
-        onVerify={(t: string) => setToken(t)}
-        onExpire={() => setToken(null)}
-        onLoad={(_widgetId: string, bound: BoundTurnstileObject) => setTurnstile(bound)}
-        theme="light"
-        size="invisible"
-      />
-
-      {status === "error" && (
-        <p className="waitlist-error">{errorMsg}</p>
+      {TURNSTILE_SITE_KEY && (
+        <Turnstile
+          sitekey={TURNSTILE_SITE_KEY}
+          onVerify={setToken}
+          onExpire={() => setToken(null)}
+          theme="light"
+          size="invisible"
+        />
       )}
+
+      {message && <p className="waitlist-error">{message}</p>}
     </>
   );
 }

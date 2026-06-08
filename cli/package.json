@@ -1,7 +1,7 @@
 {
   "name": "@cider/cli",
   "version": "0.1.0",
-  "description": "Command-line interface for cider.build sandboxes",
+  "description": "Barebones CLI for the Cider backend",
   "type": "module",
   "bin": {
     "cider": "./bin/cider.js"
@@ -19,8 +19,6 @@
     "node": ">=18"
   },
   "dependencies": {
-    "commander": "^12.1.0",
-    "des.js": "^1.1.0",
-    "open": "^10.1.0"
+    "commander": "^12.1.0"
   }
 }

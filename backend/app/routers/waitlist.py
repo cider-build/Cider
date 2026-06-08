@@ -1,20 +1,14 @@
-import logging
-
 import httpx
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import select
+from sqlmodel import Session
 
 from ..config import settings
-from ..deps import Db
+from ..db import get_session
 from ..models import WaitlistEntry
 
-router = APIRouter(prefix="/waitlist", tags=["waitlist"])
-
-_log = logging.getLogger(__name__)
-
-_TURNSTILE_VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify"
+router = APIRouter(prefix="/waitlist")
 
 
 class WaitlistIn(BaseModel):
@@ -22,38 +16,28 @@ class WaitlistIn(BaseModel):
     turnstile_token: str
 
 
-class WaitlistOut(BaseModel):
-    ok: bool
+async def verify_turnstile(token: str) -> None:
+    if not settings.turnstile_secret_key:
+        raise HTTPException(500, "Turnstile is not configured")
 
-
-async def _verify_turnstile(token: str) -> bool:
-    secret = settings.turnstile_secret_key
-    if not secret:
-        _log.error("CIDER_TURNSTILE_SECRET_KEY not set; rejecting waitlist signup")
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "Server misconfigured.")
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        r = await client.post(
-            _TURNSTILE_VERIFY_URL,
-            data={"secret": secret, "response": token},
+    async with httpx.AsyncClient() as client:
+        response = await client.post(
+            "https://challenges.cloudflare.com/turnstile/v0/siteverify",
+            data={"secret": settings.turnstile_secret_key, "response": token},
         )
-    payload = r.json()
-    return bool(payload.get("success"))
+
+    if not response.json().get("success"):
+        raise HTTPException(400, "Bot verification failed")
 
 
-@router.post("", response_model=WaitlistOut)
-async def join_waitlist(body: WaitlistIn, db: Db) -> WaitlistOut:
-    if not await _verify_turnstile(body.turnstile_token):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Bot verification failed. Please try again.")
-
-    email = body.email.lower().strip()
-    existing = db.exec(select(WaitlistEntry).where(WaitlistEntry.email == email)).first()
-    if existing:
-        return WaitlistOut(ok=True)
+@router.post("")
+async def join_waitlist(body: WaitlistIn, db: Session = Depends(get_session)) -> dict:
+    await verify_turnstile(body.turnstile_token)
 
     try:
-        db.add(WaitlistEntry(email=email))
+        db.add(WaitlistEntry(email=body.email.lower().strip()))
         db.commit()
     except IntegrityError:
         db.rollback()
-    return WaitlistOut(ok=True)
+
+    return {"ok": True}

@@ -1,62 +1,31 @@
 import { useEffect } from "react";
-import { Route, Routes, useLocation } from "react-router-dom";
 
-import { AuthProvider } from "@/lib/auth";
-import CliAuth from "@/pages/CliAuth";
-import Dashboard from "@/pages/dashboard/Dashboard";
-import DashboardChrome from "@/pages/dashboard/DashboardChrome";
-import Home from "@/pages/Home";
-import Login from "@/pages/Login";
-import Signup from "@/pages/Signup";
-import Viewer from "@/pages/viewer/Viewer";
-
-const TITLES: Record<string, string> = {
-  "/": "cider.build — macOS sandboxes for AI agents",
-  "/login": "Sign in — Cider",
-  "/signup": "Sign up — Cider",
-  "/dashboard": "Dashboard — Cider",
-  "/cli-auth": "Authorize CLI — Cider",
-};
-
-function DocumentTitle() {
-  const { pathname } = useLocation();
-  useEffect(() => {
-    const title =
-      TITLES[pathname] ??
-      (pathname.startsWith("/view/") ? "Sandbox view — Cider" : TITLES["/"]);
-    document.title = title;
-  }, [pathname]);
-  return null;
-}
+import CiderLogo from "@/components/CiderLogo";
+import WaitlistForm from "@/components/WaitlistForm";
 
 export default function App() {
+  useEffect(() => {
+    document.title = "cider.build — macOS sandboxes for AI agents";
+  }, []);
+
   return (
-    <>
-      <DocumentTitle />
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/signup" element={<Signup />} />
-        <Route
-          path="/dashboard"
-          element={
-            <AuthProvider requireAuth>
-              <DashboardChrome>
-                <Dashboard />
-              </DashboardChrome>
-            </AuthProvider>
-          }
-        />
-        <Route
-          path="/view/:id"
-          element={
-            <AuthProvider requireAuth>
-              <Viewer />
-            </AuthProvider>
-          }
-        />
-        <Route path="/cli-auth" element={<CliAuth />} />
-      </Routes>
-    </>
+    <main className="page-shell">
+      <section className="hero">
+        <CiderLogo iconSize={30} />
+
+        <h1>
+          MacOS Sandboxes
+          <br />
+          for Coding Agents.
+        </h1>
+
+        <p className="hero-subtitle">
+          Spin up MacOS instances for your agents to build, test, and interact
+          with native SwiftUI applications.
+        </p>
+
+        <WaitlistForm />
+      </section>
+    </main>
   );
 }
