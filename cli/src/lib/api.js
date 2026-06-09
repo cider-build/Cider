@@ -1,15 +1,23 @@
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
+
 async function request(config, path, options = {}) {
   const response = await fetch(`${config.apiUrl.replace(/\/+$/, "")}${path}`, {
     method: options.method || "GET",
     headers: options.body ? { "Content-Type": "application/json" } : {},
-    body: options.body ? JSON.stringify(options.body) : undefined,
+    body: options.body ? JSON.stringify(options.body) : options.form,
   });
 
-  if (!response.ok) {
-    throw new Error(await response.text());
-  }
-
+  if (!response.ok) throw new Error(await response.text());
   return response.status === 204 ? null : response.json();
+}
+
+async function sandboxForm(archivePath) {
+  const form = new FormData();
+  if (archivePath) {
+    form.set("archive", new Blob([await readFile(archivePath)]), basename(archivePath));
+  }
+  return form;
 }
 
 export function makeClient(config) {
@@ -22,9 +30,9 @@ export function makeClient(config) {
     deleteNode: (id) => request(config, `/nodes/${id}`, { method: "DELETE" }),
 
     listSandboxes: () => request(config, "/sandboxes"),
-    createSandbox: (nodeId) => request(config, "/sandboxes", {
+    createSandbox: async (archivePath) => request(config, "/sandboxes", {
       method: "POST",
-      body: { node_id: nodeId },
+      form: await sandboxForm(archivePath),
     }),
     deleteSandbox: (id) => request(config, `/sandboxes/${id}`, { method: "DELETE" }),
   };

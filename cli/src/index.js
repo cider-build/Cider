@@ -1,4 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { Command } from "commander";
+import * as tar from "tar";
 
 import { makeClient } from "./lib/api.js";
 import { readConfig } from "./lib/config.js";
@@ -18,6 +22,14 @@ function printRows(rows, columns) {
 
 function client() {
   return makeClient(readConfig());
+}
+
+async function archivePath(path) {
+  const dir = resolve(path);
+  const tmp = await mkdtemp(join(tmpdir(), "cider-"));
+  const file = join(tmp, "repo.tgz");
+  await tar.c({ cwd: dir, file, gzip: true, portable: true }, ["."]);
+  return { file, tmp };
 }
 
 export async function run(argv) {
@@ -53,6 +65,19 @@ export async function run(argv) {
       await client().deleteNode(id);
     });
 
+  program
+    .command("open [path]")
+    .description("Create a sandbox and copy a local path into it")
+    .action(async (path = ".") => {
+      const archive = await archivePath(path);
+      try {
+        const sandbox = await client().createSandbox(archive.file);
+        process.stdout.write(`${sandbox.id}\n`);
+      } finally {
+        await rm(archive.tmp, { recursive: true, force: true });
+      }
+    });
+
   const sandboxes = program.command("sandboxes").description("Manage sandboxes");
 
   sandboxes
@@ -66,16 +91,8 @@ export async function run(argv) {
   sandboxes
     .command("create")
     .description("Create a sandbox")
-    .option("--node <id>", "Node id. Defaults to the first registered node.")
-    .action(async (options) => {
-      const api = client();
-      let nodeId = options.node;
-      if (!nodeId) {
-        const nodes = await api.listNodes();
-        if (nodes.length === 0) throw new Error("no nodes registered");
-        nodeId = nodes[0].id;
-      }
-      const sandbox = await api.createSandbox(nodeId);
+    .action(async () => {
+      const sandbox = await client().createSandbox();
       process.stdout.write(`${sandbox.id}\n`);
     });
 
