@@ -123,6 +123,18 @@ export async function run(argv) {
     });
 
   sandboxes
+    .command("display <id>")
+    .description("Open a VNC display session for a sandbox")
+    .option("--open", "Open the VNC URL with the OS default handler")
+    .action(async (id, options) => {
+      const display = await client().openDisplay(id);
+      if (options.open) {
+        await exec(process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open", process.platform === "win32" ? ["/c", "start", "", display.url] : [display.url]);
+      }
+      process.stdout.write(`${display.url}\n`);
+    });
+
+  sandboxes
     .command("delete <id>")
     .description("Delete a sandbox")
     .action(async (id) => {

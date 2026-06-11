@@ -5,7 +5,7 @@ import tempfile
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from pydantic import BaseModel
 
-from . import tart
+from . import display, tart
 
 app = FastAPI(title="Cider Node")
 
@@ -42,9 +42,34 @@ async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
     except RuntimeError as e:
         raise HTTPException(500, str(e))
 
+
+@app.post("/sandboxes/{sandbox_id}/display", status_code=200)
+async def open_display(sandbox_id: str) -> dict:
+    try:
+        session = await display.open_display(sandbox_id)
+        return {
+            "id": session.id,
+            "protocol": "vnc",
+            "transport": "tcp",
+            "host": session.host,
+            "port": session.port,
+            "url": session.url,
+            "username": display.config.DISPLAY_USERNAME,
+            "password": display.config.DISPLAY_PASSWORD,
+        }
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+
+@app.delete("/display/{session_id}", status_code=204)
+async def close_display(session_id: str) -> None:
+    await display.close_display(session_id)
+
+
 @app.delete("/sandboxes/{sandbox_id}", status_code=204)
 async def delete_sandbox(sandbox_id: str) -> None:
     try:
+        await display.close_sandbox_display(sandbox_id)
         await tart.delete(sandbox_id)
     except RuntimeError as e:
         raise HTTPException(500, str(e))

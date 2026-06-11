@@ -38,6 +38,7 @@ export function makeClient(config) {
       method: "POST",
       body: { command },
     }),
+    openDisplay: (id) => request(config, `/sandboxes/${id}/display`, { method: "POST" }),
     deleteSandbox: (id) => request(config, `/sandboxes/${id}`, { method: "DELETE" }),
   };
 }

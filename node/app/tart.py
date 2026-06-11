@@ -23,7 +23,7 @@ async def tart(*args: str, check: bool = True) -> str:
 
 def start(sandbox_id: str) -> None:
     subprocess.Popen(
-        [config.TART, "run", "--no-graphics", sandbox_id],
+        [config.TART, "run", "--vnc", sandbox_id],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,

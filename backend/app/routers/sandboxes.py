@@ -73,6 +73,28 @@ async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
     return response.json()
 
 
+@router.post("/{sandbox_id}/display", status_code=200)
+async def open_display(sandbox_id: str) -> dict:
+    db = get_session()
+    sandbox = db.get(Sandbox, sandbox_id)
+    if sandbox is None or sandbox.deleted_at is not None:
+        raise HTTPException(404, "sandbox not found")
+
+    node = db.get(Node, sandbox.node_id)
+    if node is None:
+        raise HTTPException(404, "node not found")
+
+    try:
+        response = await http.post(f"{node.url}/sandboxes/{sandbox.id}/display")
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"node unreachable: {e}")
+
+    if response.status_code >= 400:
+        raise HTTPException(response.status_code, response.text)
+
+    return response.json()
+
+
 @router.delete("/{sandbox_id}", status_code=204)
 async def delete_sandbox(sandbox_id: str) -> None:
     db = get_session()
