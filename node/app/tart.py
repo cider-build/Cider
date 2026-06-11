@@ -64,3 +64,14 @@ async def delete(sandbox_id: str) -> None:
 
     await tart("stop", sandbox_id, "--timeout", str(config.STOP_TIMEOUT_SECONDS), check=False)
     await tart("delete", sandbox_id)
+
+
+async def execute(sandbox_id: str, command: str) -> str:
+    ip = (await tart("ip", sandbox_id, "--wait", str(config.START_TIMEOUT_SECONDS)))
+    ssh = [
+        "-i", config.SSH_KEY,
+        "-o", "StrictHostKeyChecking=no",
+        "-o", "UserKnownHostsFile=/dev/null",
+        "-o", "LogLevel=ERROR",
+    ]
+    return await run("ssh", *ssh, f"{config.SSH_USER}@{ip}", command)

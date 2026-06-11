@@ -17,6 +17,7 @@ cider nodes delete <id>
 
 cider sandboxes
 cider sandboxes create
+cider sandboxes exec <id> <command>
 cider sandboxes delete <id>
 
 cider open [path]

@@ -2,6 +2,7 @@ from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from pydantic import BaseModel
 from sqlmodel import select
 
 from ..db import get_session
@@ -9,6 +10,10 @@ from ..models import Node, Sandbox
 
 router = APIRouter(prefix="/sandboxes")
 http = httpx.AsyncClient(timeout=None)
+
+
+class ExecuteInput(BaseModel):
+    command: str
 
 
 @router.get("")
@@ -44,6 +49,28 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> Sandbox:
     db.commit()
     db.refresh(sandbox)
     return sandbox
+
+
+@router.post("/{sandbox_id}/execute", status_code=200)
+async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
+    db = get_session()
+    sandbox = db.get(Sandbox, sandbox_id)
+    if sandbox is None or sandbox.deleted_at is not None:
+        raise HTTPException(404, "sandbox not found")
+
+    node = db.get(Node, sandbox.node_id)
+    if node is None:
+        raise HTTPException(404, "node not found")
+        
+    try:
+        response = await http.post(f"{node.url}/sandboxes/{sandbox.id}/execute", json={"command": body.command})
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"node unreachable: {e}")
+
+    if response.status_code >= 400:
+        raise HTTPException(response.status_code, response.text)
+
+    return response.json()
 
 
 @router.delete("/{sandbox_id}", status_code=204)

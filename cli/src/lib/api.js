@@ -34,6 +34,10 @@ export function makeClient(config) {
       method: "POST",
       form: await sandboxForm(archivePath),
     }),
+    executeSandbox: (id, command) => request(config, `/sandboxes/${id}/execute`, {
+      method: "POST",
+      body: { command },
+    }),
     deleteSandbox: (id) => request(config, `/sandboxes/${id}`, { method: "DELETE" }),
   };
 }

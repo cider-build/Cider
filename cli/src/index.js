@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { promisify } from "node:util";
 import { Command } from "commander";
 import * as tar from "tar";
 
@@ -24,12 +26,28 @@ function client() {
   return makeClient(readConfig());
 }
 
+const exec = promisify(execFile);
+
+async function gitFiles(dir) {
+  try {
+    const { stdout } = await exec("git", ["-C", dir, "ls-files", "-z", "--cached", "--modified", "--others", "--exclude-standard", "--", "."], { encoding: "buffer", maxBuffer: 1024 * 1024 * 100 });
+    return stdout.toString("utf8").split("\0").filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
 async function archivePath(path) {
   const dir = resolve(path);
   const tmp = await mkdtemp(join(tmpdir(), "cider-"));
   const file = join(tmp, "repo.tgz");
-  await tar.c({ cwd: dir, file, gzip: true, portable: true }, ["."]);
-  return { file, tmp };
+  try {
+    await tar.c({ cwd: dir, file, gzip: true, portable: true }, (await gitFiles(dir)) || ["."]);
+    return { file, tmp };
+  } catch (error) {
+    await rm(tmp, { recursive: true, force: true });
+    throw error;
+  }
 }
 
 export async function run(argv) {
@@ -94,6 +112,14 @@ export async function run(argv) {
     .action(async () => {
       const sandbox = await client().createSandbox();
       process.stdout.write(`${sandbox.id}\n`);
+    });
+
+  sandboxes
+    .command("exec <id> <command...>")
+    .description("Run a command in a sandbox")
+    .action(async (id, command) => {
+      const result = await client().executeSandbox(id, command.join(" "));
+      process.stdout.write(result.output || "");
     });
 
   sandboxes

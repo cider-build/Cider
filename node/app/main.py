@@ -3,10 +3,15 @@ import os
 import tempfile
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from . import tart
 
 app = FastAPI(title="Cider Node")
+
+
+class ExecuteInput(BaseModel):
+    command: str
 
 
 @app.post("/sandboxes", status_code=201)
@@ -29,6 +34,13 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> dict:
         if archive_path is not None:
             os.unlink(archive_path)
 
+
+@app.post("/sandboxes/{sandbox_id}/execute", status_code=200)
+async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
+    try:
+        return {"output": await tart.execute(sandbox_id, body.command)}
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
 
 @app.delete("/sandboxes/{sandbox_id}", status_code=204)
 async def delete_sandbox(sandbox_id: str) -> None:
