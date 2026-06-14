@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import nodes, sandboxes, waitlist
+from .routers import nodes, sandboxes, snapshots, waitlist
 
 init_db()
 
@@ -19,6 +19,7 @@ app.add_middleware(
 
 app.include_router(nodes.router)
 app.include_router(sandboxes.router)
+app.include_router(snapshots.router)
 app.include_router(waitlist.router)
 
 

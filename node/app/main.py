@@ -1,9 +1,10 @@
-import contextlib
 import os
 import tempfile
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from starlette.background import BackgroundTask
 
 from . import display, tart
 
@@ -29,6 +30,36 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> dict:
         return {"id": sandbox_id}
     except RuntimeError as e:
         if sandbox_id: await tart.delete(sandbox_id)
+        raise HTTPException(500, str(e))
+    finally:
+        if archive_path is not None:
+            os.unlink(archive_path)
+
+
+@app.post("/sandboxes/{sandbox_id}/export")
+async def export_sandbox(sandbox_id: str) -> FileResponse:
+    archive_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tgz") as file:
+            archive_path = file.name
+        await tart.export(sandbox_id, archive_path)
+        return FileResponse(archive_path, filename=f"{sandbox_id}.tgz", background=BackgroundTask(os.unlink, archive_path))
+    except RuntimeError as e:
+        if archive_path is not None:
+            os.unlink(archive_path)
+        raise HTTPException(500, str(e))
+
+
+@app.post("/sandboxes/import", status_code=201)
+async def import_sandbox(archive: UploadFile = File(...)) -> dict:
+    archive_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tgz") as file:
+            archive_path = file.name
+            while chunk := await archive.read(1024 * 1024):
+                file.write(chunk)
+        return {"id": await tart.import_vm(archive_path)}
+    except RuntimeError as e:
         raise HTTPException(500, str(e))
     finally:
         if archive_path is not None:

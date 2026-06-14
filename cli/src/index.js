@@ -135,10 +135,43 @@ export async function run(argv) {
     });
 
   sandboxes
+    .command("snapshot <id>")
+    .description("Snapshot a sandbox")
+    .action(async (id) => {
+      const snapshot = await client().snapshotSandbox(id);
+      process.stdout.write(`${snapshot.id}\n`);
+    });
+
+  sandboxes
     .command("delete <id>")
     .description("Delete a sandbox")
     .action(async (id) => {
       await client().deleteSandbox(id);
+    });
+
+  const snapshots = program.command("snapshots").description("Manage snapshots");
+
+  snapshots
+    .command("list", { isDefault: true })
+    .description("List snapshots")
+    .action(async () => {
+      const rows = await client().listSnapshots();
+      printRows(rows, ["id", "source_sandbox_id", "created_at"]);
+    });
+
+  snapshots
+    .command("restore <id>")
+    .description("Create a sandbox from a snapshot")
+    .action(async (id) => {
+      const sandbox = await client().restoreSnapshot(id);
+      process.stdout.write(`${sandbox.id}\n`);
+    });
+
+  snapshots
+    .command("delete <id>")
+    .description("Delete a snapshot")
+    .action(async (id) => {
+      await client().deleteSnapshot(id);
     });
 
   await program.parseAsync(argv);

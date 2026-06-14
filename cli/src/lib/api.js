@@ -30,6 +30,7 @@ export function makeClient(config) {
     deleteNode: (id) => request(config, `/nodes/${id}`, { method: "DELETE" }),
 
     listSandboxes: () => request(config, "/sandboxes"),
+    listSnapshots: () => request(config, "/snapshots"),
     createSandbox: async (archivePath) => request(config, "/sandboxes", {
       method: "POST",
       form: await sandboxForm(archivePath),
@@ -39,6 +40,9 @@ export function makeClient(config) {
       body: { command },
     }),
     openDisplay: (id) => request(config, `/sandboxes/${id}/display`, { method: "POST" }),
+    snapshotSandbox: (id) => request(config, `/sandboxes/${id}/snapshots`, { method: "POST" }),
+    restoreSnapshot: (id) => request(config, `/snapshots/${id}/sandboxes`, { method: "POST" }),
+    deleteSnapshot: (id) => request(config, `/snapshots/${id}`, { method: "DELETE" }),
     deleteSandbox: (id) => request(config, `/sandboxes/${id}`, { method: "DELETE" }),
   };
 }

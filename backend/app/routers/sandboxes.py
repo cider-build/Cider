@@ -5,8 +5,9 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlmodel import select
 
+from .. import storage
 from ..db import get_session
-from ..models import Node, Sandbox
+from ..models import Node, Sandbox, Snapshot
 
 router = APIRouter(prefix="/sandboxes")
 http = httpx.AsyncClient(timeout=None)
@@ -49,6 +50,32 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> Sandbox:
     db.commit()
     db.refresh(sandbox)
     return sandbox
+
+
+@router.post("/{sandbox_id}/snapshots", status_code=201)
+async def snapshot_sandbox(sandbox_id: str) -> Snapshot:
+    db = get_session()
+    sandbox = db.get(Sandbox, sandbox_id)
+    if sandbox is None or sandbox.deleted_at is not None:
+        raise HTTPException(404, "sandbox not found")
+
+    node = db.get(Node, sandbox.node_id)
+    if node is None:
+        raise HTTPException(404, "node not found")
+
+    snapshot = Snapshot(source_sandbox_id=sandbox.id)
+    try:
+        async with http.stream("POST", f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/export") as response:
+            if response.status_code >= 400:
+                raise HTTPException(response.status_code, (await response.aread()).decode())
+            await storage.save_snapshot(snapshot.id, response.aiter_bytes())
+    except httpx.HTTPError as e:
+        raise HTTPException(502, f"node unreachable: {e}")
+
+    db.add(snapshot)
+    db.commit()
+    db.refresh(snapshot)
+    return snapshot
 
 
 @router.post("/{sandbox_id}/execute", status_code=200)

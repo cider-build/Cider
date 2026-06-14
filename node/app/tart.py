@@ -21,6 +21,14 @@ async def tart(*args: str, check: bool = True) -> str:
     return await run(config.TART, *args, check=check)
 
 
+async def run_to_file(path: str, *args: str) -> None:
+    with open(path, "wb") as file:
+        proc = await asyncio.create_subprocess_exec(*args, stdout=file, stderr=asyncio.subprocess.PIPE)
+        _, stderr = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(stderr.decode().strip())
+
+
 def start(sandbox_id: str) -> None:
     subprocess.Popen(
         [config.TART, "run", "--vnc", sandbox_id],
@@ -58,6 +66,19 @@ async def upload(sandbox_id: str, archive_path: str) -> None:
     )
 
 
+async def export(sandbox_id: str, archive_path: str) -> None:
+    ip = (await tart("ip", sandbox_id, "--wait", str(config.START_TIMEOUT_SECONDS))).strip()
+    ssh = ["-i", config.SSH_KEY, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
+    await run("ssh", *ssh, f"{config.SSH_USER}@{ip}", f"mkdir -p {shlex.quote(config.GUEST_DIR)}")
+    await run_to_file(archive_path, "ssh", *ssh, f"{config.SSH_USER}@{ip}", f"tar -czf - -C {shlex.quote(config.GUEST_DIR)} .")
+
+
+async def import_vm(archive_path: str, sandbox_id: str | None = None) -> str:
+    sandbox_id = await create(sandbox_id)
+    await upload(sandbox_id, archive_path)
+    return sandbox_id
+
+
 async def delete(sandbox_id: str) -> None:
     if sandbox_id == config.BASE_VM or not sandbox_id.startswith(config.SANDBOX_PREFIX):
         raise RuntimeError(f"refusing to delete unmanaged VM: {sandbox_id}")
@@ -67,7 +88,7 @@ async def delete(sandbox_id: str) -> None:
 
 
 async def execute(sandbox_id: str, command: str) -> str:
-    ip = (await tart("ip", sandbox_id, "--wait", str(config.START_TIMEOUT_SECONDS)))
+    ip = (await tart("ip", sandbox_id, "--wait", str(config.START_TIMEOUT_SECONDS))).strip()
     ssh = [
         "-i", config.SSH_KEY,
         "-o", "StrictHostKeyChecking=no",
