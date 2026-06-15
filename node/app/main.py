@@ -1,4 +1,5 @@
 import os
+import shlex
 import tempfile
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -13,6 +14,11 @@ app = FastAPI(title="Cider Node")
 
 class ExecuteInput(BaseModel):
     command: str
+
+
+class LaunchConfigIn(BaseModel):
+    setup: str | list[str] | None = None
+    start: str | None = None
 
 
 @app.post("/sandboxes", status_code=201)
@@ -70,6 +76,22 @@ async def import_sandbox(archive: UploadFile = File(...)) -> dict:
 async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
     try:
         return {"output": await tart.execute(sandbox_id, body.command)}
+    except RuntimeError as e:
+        raise HTTPException(500, str(e))
+
+
+@app.post("/sandboxes/{sandbox_id}/launch-config", status_code=204)
+async def run_launch_config(sandbox_id: str, body: LaunchConfigIn) -> None:
+    setup = [] if body.setup is None else ([body.setup] if isinstance(body.setup, str) else body.setup)
+
+    try:
+        for command in setup:
+            if not command.strip():
+                raise HTTPException(422, "launch config setup commands must be non-empty")
+            await tart.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'cd {shlex.quote(tart.config.GUEST_DIR)} && {command}')}")
+        if body.start:
+            command = f"nohup /bin/zsh -lc {shlex.quote(body.start)} >/tmp/cider-start.log 2>&1 </dev/null &"
+            await tart.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'cd {shlex.quote(tart.config.GUEST_DIR)} && {command}')}")
     except RuntimeError as e:
         raise HTTPException(500, str(e))
 

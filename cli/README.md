@@ -29,3 +29,13 @@ cider open [path]
 ```
 
 `cider open .` creates a tarball of the local path, creates a sandbox, and copies the files into the guest at `/Users/admin/cider`.
+
+If the opened directory has a `cider.json`, the backend stores it as the sandbox launch config and runs it after upload:
+
+```json
+{
+  "version": 1,
+  "setup": ["npm install"],
+  "start": "npm run dev"
+}
+```

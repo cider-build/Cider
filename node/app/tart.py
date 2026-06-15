@@ -31,7 +31,7 @@ async def run_to_file(path: str, *args: str) -> None:
 
 def start(sandbox_id: str) -> None:
     subprocess.Popen(
-        [config.TART, "run", "--vnc", sandbox_id],
+        [config.TART, "run", "--no-graphics", sandbox_id],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,

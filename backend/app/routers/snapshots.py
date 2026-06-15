@@ -35,10 +35,23 @@ async def restore_snapshot(snapshot_id: str) -> Sandbox:
     if response.status_code >= 400:
         raise HTTPException(response.status_code, response.text)
 
-    sandbox = Sandbox(id=response.json()["id"], node_id=node.id)
+    sandbox = Sandbox(
+        id=response.json()["id"],
+        node_id=node.id,
+        launch_config=snapshot.launch_config,
+    )
     db.add(sandbox)
     db.commit()
     db.refresh(sandbox)
+
+    if snapshot.launch_config is not None:
+        try:
+            response = await http.post(f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/launch-config", json=snapshot.launch_config)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"node unreachable: {e}")
+        if response.status_code >= 400:
+            raise HTTPException(response.status_code, response.text)
+
     return sandbox
 
 

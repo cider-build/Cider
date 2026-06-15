@@ -1,4 +1,7 @@
 from datetime import datetime, timezone
+import io
+import json
+import tarfile
 
 import httpx
 from fastapi import APIRouter, File, HTTPException, UploadFile
@@ -15,6 +18,20 @@ http = httpx.AsyncClient(timeout=None)
 
 class ExecuteInput(BaseModel):
     command: str
+
+
+def extract_launch_config(archive: bytes) -> dict | None:
+    with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
+        for member in tar.getmembers():
+            if member.name.removeprefix("./") == "cider.json" and member.isfile():
+                file = tar.extractfile(member)
+                if file is None:
+                    return None
+                config = json.load(file)
+                if not isinstance(config, dict):
+                    raise ValueError("cider.json must be a JSON object")
+                return config
+    return None
 
 
 @router.get("")
@@ -34,21 +51,39 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> Sandbox:
     if node is None:
         raise HTTPException(404, "no nodes registered")
 
+    config = None
     try:
         files = None
         if archive is not None:
-            files = {"archive": (archive.filename, await archive.read(), archive.content_type)}
+            archive_bytes = await archive.read()
+            config = extract_launch_config(archive_bytes)
+            files = {"archive": (archive.filename, archive_bytes, archive.content_type)}
         response = await http.post(f"{node.url.rstrip('/')}/sandboxes", files=files)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
     except httpx.HTTPError as e:
         raise HTTPException(502, f"node unreachable: {e}")
 
     if response.status_code >= 400:
         raise HTTPException(response.status_code, response.text)
 
-    sandbox = Sandbox(id=response.json()["id"], node_id=node.id)
+    sandbox = Sandbox(
+        id=response.json()["id"],
+        node_id=node.id,
+        launch_config=config,
+    )
     db.add(sandbox)
     db.commit()
     db.refresh(sandbox)
+
+    if config is not None:
+        try:
+            response = await http.post(f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/launch-config", json=config)
+        except httpx.HTTPError as e:
+            raise HTTPException(502, f"node unreachable: {e}")
+        if response.status_code >= 400:
+            raise HTTPException(response.status_code, response.text)
+
     return sandbox
 
 
@@ -63,7 +98,7 @@ async def snapshot_sandbox(sandbox_id: str) -> Snapshot:
     if node is None:
         raise HTTPException(404, "node not found")
 
-    snapshot = Snapshot(source_sandbox_id=sandbox.id)
+    snapshot = Snapshot(source_sandbox_id=sandbox.id, launch_config=sandbox.launch_config)
     try:
         async with http.stream("POST", f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/export") as response:
             if response.status_code >= 400:
