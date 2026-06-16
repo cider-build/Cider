@@ -2,7 +2,7 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 
-from .. import storage
+from .. import storage, warm_pool
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
 
@@ -25,6 +25,8 @@ async def restore_snapshot(snapshot_id: str) -> Sandbox:
         raise HTTPException(404, "snapshot not found")
     if node is None:
         raise HTTPException(404, "no nodes registered")
+    if not warm_pool.node_has_vm_capacity(db, node):
+        raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
 
     try:
         with open(storage.snapshot_path(snapshot.id), "rb") as file:
