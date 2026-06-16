@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import io
 import json
 import tarfile
@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from .. import storage
+from ..config import settings
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
 
@@ -18,6 +19,23 @@ http = httpx.AsyncClient(timeout=None)
 
 class ExecuteInput(BaseModel):
     command: str
+
+
+async def cleanup_expired_sandboxes() -> None:
+    db = get_session()
+    cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=settings.sandbox_ttl_seconds)
+    for sandbox in db.exec(select(Sandbox).where(Sandbox.deleted_at.is_(None), Sandbox.created_at <= cutoff)).all():
+        node = db.get(Node, sandbox.node_id)
+        if node is None:
+            continue
+        try:
+            response = await http.delete(f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}")
+        except httpx.HTTPError:
+            continue
+        if response.status_code < 500:
+            sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.add(sandbox)
+    db.commit()
 
 
 def extract_launch_config(archive: bytes) -> dict | None:

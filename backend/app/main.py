@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -21,6 +23,18 @@ app.include_router(nodes.router)
 app.include_router(sandboxes.router)
 app.include_router(snapshots.router)
 app.include_router(waitlist.router)
+
+
+# later on, should implement a true queue-based TTL cleanup. simple implementation for now to work on other stuff
+async def cleanup_loop() -> None:
+    while True:
+        await sandboxes.cleanup_expired_sandboxes()
+        await asyncio.sleep(5)
+
+
+@app.on_event("startup")
+async def start_cleanup_loop() -> None:
+    asyncio.create_task(cleanup_loop())
 
 
 def run() -> None:
