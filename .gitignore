@@ -1,9 +1,30 @@
+# node / next
 node_modules/
-cli-npm/dist/
 .next/
-*.exe
-.env.local
 next-env.d.ts
+
+# python / uv
+.venv/
 __pycache__/
 *.pyc
+
+# swift
+.build/
+.swiftpm/
+
+# sqlite
+*.db
+*.db-journal
+*.db-shm
+
+# env
+.env
+.env.*
+!.env.example
+
+# editor / agent
+.cider/
+.claude/
+
+# os
 .DS_Store

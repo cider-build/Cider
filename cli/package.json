@@ -1,0 +1,25 @@
+{
+  "name": "@cider/cli",
+  "version": "0.1.0",
+  "description": "Barebones CLI for the Cider backend",
+  "type": "module",
+  "bin": {
+    "cider": "./bin/cider.js"
+  },
+  "files": [
+    "bin",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "link": "npm link",
+    "unlink": "npm unlink -g @cider/cli"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "tar": "^7.5.2"
+  }
+}
