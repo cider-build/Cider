@@ -83,15 +83,23 @@ async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
 @app.post("/sandboxes/{sandbox_id}/launch-config", status_code=204)
 async def run_launch_config(sandbox_id: str, body: LaunchConfigIn) -> None:
     setup = [] if body.setup is None else ([body.setup] if isinstance(body.setup, str) else body.setup)
+    cd_project = (
+        f"base={shlex.quote(tart.config.GUEST_DIR)}; "
+        "project=$base; "
+        "entries=$(find \"$base\" -mindepth 1 -maxdepth 1 | wc -l | tr -d ' '); "
+        "first=$(find \"$base\" -mindepth 1 -maxdepth 1 -type d | head -n 1); "
+        "if [ \"$entries\" = \"1\" ] && [ -n \"$first\" ]; then project=$first; fi; "
+        "cd \"$project\""
+    )
 
     try:
         for command in setup:
             if not command.strip():
                 raise HTTPException(422, "launch config setup commands must be non-empty")
-            await tart.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'cd {shlex.quote(tart.config.GUEST_DIR)} && {command}')}")
+            await tart.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'{cd_project} && {command}')}")
         if body.start:
             command = f"nohup /bin/zsh -lc {shlex.quote(body.start)} >/tmp/cider-start.log 2>&1 </dev/null &"
-            await tart.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'cd {shlex.quote(tart.config.GUEST_DIR)} && {command}')}")
+            await tart.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'{cd_project} && {command}')}")
     except RuntimeError as e:
         raise HTTPException(500, str(e))
 

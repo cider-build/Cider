@@ -23,7 +23,8 @@ class ExecuteInput(BaseModel):
 def extract_launch_config(archive: bytes) -> dict | None:
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
         for member in tar.getmembers():
-            if member.name.removeprefix("./") == "cider.json" and member.isfile():
+            parts = member.name.removeprefix("./").split("/")
+            if len(parts) <= 2 and parts[-1] == "cider.json" and member.isfile():
                 file = tar.extractfile(member)
                 if file is None:
                     return None

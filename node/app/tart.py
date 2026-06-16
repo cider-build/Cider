@@ -62,7 +62,7 @@ async def upload(sandbox_id: str, archive_path: str) -> None:
     guest_dir = shlex.quote(config.GUEST_DIR)
     await run(
         "ssh", *ssh, f"{config.SSH_USER}@{ip}",
-        f"rm -rf {guest_dir} && mkdir -p {guest_dir} && tar -xzf /tmp/cider-source.tgz -C {guest_dir} && rm /tmp/cider-source.tgz",
+        f"mkdir -p {guest_dir} && find {guest_dir} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} + && tar -xzf /tmp/cider-source.tgz -C {guest_dir} && rm /tmp/cider-source.tgz",
     )
 
 

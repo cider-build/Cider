@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { Command } from "commander";
 import * as tar from "tar";
@@ -39,10 +39,16 @@ async function gitFiles(dir) {
 
 async function archivePath(path) {
   const dir = resolve(path);
+  const parent = dirname(dir);
+  const root = basename(dir);
   const tmp = await mkdtemp(join(tmpdir(), "cider-"));
   const file = join(tmp, "repo.tgz");
   try {
-    await tar.c({ cwd: dir, file, gzip: true, portable: true }, (await gitFiles(dir)) || ["."]);
+    const files = await gitFiles(dir);
+    await tar.c(
+      { cwd: parent, file, gzip: true, portable: true },
+      files ? files.map((path) => `${root}/${path}`) : [root],
+    );
     return { file, tmp };
   } catch (error) {
     await rm(tmp, { recursive: true, force: true });

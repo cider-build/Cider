@@ -28,7 +28,7 @@ cider snapshots delete <id>
 cider open [path]
 ```
 
-`cider open .` creates a tarball of the local path, creates a sandbox, and copies the files into the guest at `/Users/admin/cider`.
+`cider open .` creates a tarball of the local path, creates a sandbox, and copies the folder into the guest under `/Users/admin/cider/<folder-name>`.
 
 If the opened directory has a `cider.json`, the backend stores it as the sandbox launch config and runs it after upload:
 
