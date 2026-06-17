@@ -26,5 +26,6 @@ __pycache__/
 .cider/
 .claude/
 
+scripts/
 # os
 .DS_Store

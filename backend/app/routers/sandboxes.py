@@ -10,6 +10,7 @@ from sqlmodel import select
 
 from .. import storage
 from ..config import settings
+from ..services import warm_pool
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
 
@@ -24,7 +25,8 @@ class ExecuteInput(BaseModel):
 async def cleanup_expired_sandboxes() -> None:
     db = get_session()
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=settings.sandbox_ttl_seconds)
-    for sandbox in db.exec(select(Sandbox).where(Sandbox.deleted_at.is_(None), Sandbox.created_at <= cutoff)).all():
+    nodes_to_refill = []
+    for sandbox in db.exec(select(Sandbox).where(Sandbox.deleted_at.is_(None), Sandbox.status == "active", Sandbox.created_at <= cutoff)).all():
         node = db.get(Node, sandbox.node_id)
         if node is None:
             continue
@@ -35,7 +37,10 @@ async def cleanup_expired_sandboxes() -> None:
         if response.status_code < 500:
             sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.add(sandbox)
+            nodes_to_refill.append(node)
     db.commit()
+    for node in nodes_to_refill:
+        await warm_pool.ensure_node_has_warm_sandboxes(node)
 
 
 def extract_launch_config(archive: bytes) -> dict | None:
@@ -58,7 +63,7 @@ async def list_sandboxes() -> list[Sandbox]:
     db = get_session()
     return db.exec(
         select(Sandbox)
-        .where(Sandbox.deleted_at.is_(None))
+        .where(Sandbox.deleted_at.is_(None), Sandbox.status == "active")
         .order_by(Sandbox.created_at.desc())
     ).all()
 
@@ -66,34 +71,33 @@ async def list_sandboxes() -> list[Sandbox]:
 @router.post("", status_code=201)
 async def create_sandbox(archive: UploadFile | None = File(None)) -> Sandbox:
     db = get_session()
-    node = db.exec(select(Node).order_by(Node.name)).first()
-    if node is None:
-        raise HTTPException(404, "no nodes registered")
-
     config = None
+
     try:
-        files = None
-        if archive is not None:
+        if archive is None:
+            node, sandbox = await warm_pool.create_sandbox_on_available_node()
+        else:
+            node = db.exec(select(Node).order_by(Node.name)).first()
+            if node is None:
+                raise HTTPException(404, "no nodes registered")
+            if not warm_pool.node_has_vm_capacity(db, node):
+                raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
             archive_bytes = await archive.read()
             config = extract_launch_config(archive_bytes)
-            files = {"archive": (archive.filename, archive_bytes, archive.content_type)}
-        response = await http.post(f"{node.url.rstrip('/')}/sandboxes", files=files)
+            response = await http.post(
+                f"{node.url.rstrip('/')}/sandboxes",
+                files={"archive": (archive.filename, archive_bytes, archive.content_type)},
+            )
+            if response.status_code >= 400:
+                raise HTTPException(response.status_code, response.text)
+            sandbox = Sandbox(id=response.json()["id"], node_id=node.id, launch_config=config)
+            db.add(sandbox)
+            db.commit()
+            db.refresh(sandbox)
     except ValueError as e:
         raise HTTPException(422, str(e))
     except httpx.HTTPError as e:
         raise HTTPException(502, f"node unreachable: {e}")
-
-    if response.status_code >= 400:
-        raise HTTPException(response.status_code, response.text)
-
-    sandbox = Sandbox(
-        id=response.json()["id"],
-        node_id=node.id,
-        launch_config=config,
-    )
-    db.add(sandbox)
-    db.commit()
-    db.refresh(sandbox)
 
     if config is not None:
         try:
@@ -200,3 +204,4 @@ async def delete_sandbox(sandbox_id: str) -> None:
     sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.add(sandbox)
     db.commit()
+    await warm_pool.ensure_node_has_warm_sandboxes(node)

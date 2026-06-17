@@ -3,6 +3,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from .services import warm_pool
 from .config import settings
 from .db import init_db
 from .routers import nodes, sandboxes, snapshots, waitlist
@@ -33,8 +34,9 @@ async def cleanup_loop() -> None:
 
 
 @app.on_event("startup")
-async def start_cleanup_loop() -> None:
+async def startup() -> None:
     asyncio.create_task(cleanup_loop())
+    await warm_pool.start()
 
 
 def run() -> None:

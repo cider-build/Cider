@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
+from ..services import warm_pool
 from ..db import get_session
 from ..models import Node
 
@@ -39,6 +40,7 @@ async def create_node(body: NodeIn) -> Node:
     db.add(node)
     db.commit()
     db.refresh(node)
+    await warm_pool.ensure_node_has_warm_sandboxes(node)
     return node
 
 
