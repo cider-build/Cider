@@ -3,7 +3,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
-from .. import warm_pool
+from ..services import warm_pool
 from ..db import get_session
 from ..models import Node
 

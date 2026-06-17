@@ -2,7 +2,8 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from sqlmodel import select
 
-from .. import storage, warm_pool
+from .. import storage
+from ..services import warm_pool
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
 

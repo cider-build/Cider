@@ -3,7 +3,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import warm_pool
+from .services import warm_pool
 from .config import settings
 from .db import init_db
 from .routers import nodes, sandboxes, snapshots, waitlist
