@@ -7,6 +7,15 @@
   margin: 0;
 }
 
+.org {
+  font-weight: 600;
+}
+
+.email {
+  color: #737373;
+  font-size: 14px;
+}
+
 .account button {
   border: 1px solid #d4d4d4;
   border-radius: 8px;

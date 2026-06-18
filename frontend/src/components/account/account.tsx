@@ -12,8 +12,8 @@ export function Account({ auth }: { auth: AuthOut }) {
 
   return (
     <section className={styles.account}>
-      <p>{auth.user.email}</p>
-      <p>{auth.organization.name}</p>
+      <p className={styles.org}>{auth.organization.name}</p>
+      <p className={styles.email}>{auth.user.email}</p>
       <button onClick={() => logout.mutate()} disabled={logout.isPending}>Log out</button>
     </section>
   );
