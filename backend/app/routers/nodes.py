@@ -1,8 +1,9 @@
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
+from ..auth import AuthContext, current_auth_context
 from ..services import warm_pool
 from ..db import get_session
 from ..models import Node
@@ -17,15 +18,15 @@ class NodeIn(BaseModel):
 
 
 @router.get("")
-async def list_nodes() -> list[Node]:
+async def list_nodes(ctx: AuthContext = Depends(current_auth_context)) -> list[Node]:
     db = get_session()
-    return db.exec(select(Node).order_by(Node.name)).all()
+    return db.exec(select(Node).where(Node.org_id == ctx.membership.organization_id).order_by(Node.name)).all()
 
 
 @router.post("", status_code=201)
-async def create_node(body: NodeIn) -> Node:
+async def create_node(body: NodeIn, ctx: AuthContext = Depends(current_auth_context)) -> Node:
     db = get_session()
-    if db.exec(select(Node).where(Node.name == body.name)).first():
+    if db.exec(select(Node).where(Node.org_id == ctx.membership.organization_id, Node.name == body.name)).first():
         raise HTTPException(409, "node name already exists")
 
     try:
@@ -36,7 +37,7 @@ async def create_node(body: NodeIn) -> Node:
     if response.status_code != 200:
         raise HTTPException(400, "node did not look like a Cider node")
 
-    node = Node(name=body.name, url=body.url)
+    node = Node(name=body.name, url=body.url, org_id=ctx.membership.organization_id)
     db.add(node)
     db.commit()
     db.refresh(node)
@@ -45,10 +46,10 @@ async def create_node(body: NodeIn) -> Node:
 
 
 @router.delete("/{node_id}", status_code=204)
-async def delete_node(node_id: str) -> None:
+async def delete_node(node_id: str, ctx: AuthContext = Depends(current_auth_context)) -> None:
     db = get_session()
     node = db.get(Node, node_id)
-    if node is None:
+    if node is None or node.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "node not found")
     db.delete(node)
     db.commit()
