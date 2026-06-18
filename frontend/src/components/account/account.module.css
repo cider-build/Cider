@@ -1,0 +1,15 @@
+.account {
+  display: grid;
+  gap: 8px;
+}
+
+.account p {
+  margin: 0;
+}
+
+.account button {
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 10px 12px;
+}

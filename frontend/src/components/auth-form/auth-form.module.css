@@ -1,0 +1,26 @@
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+
+.form input,
+.form button {
+  border: 1px solid #d4d4d4;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.form button {
+  cursor: pointer;
+}
+
+.error {
+  color: #b42318;
+  margin: 0;
+  white-space: pre-wrap;
+}
