@@ -1,8 +1,9 @@
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from .. import storage
+from ..auth import AuthContext, current_auth_context
 from ..services import warm_pool
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
@@ -12,17 +13,21 @@ http = httpx.AsyncClient(timeout=None)
 
 
 @router.get("")
-async def list_snapshots() -> list[Snapshot]:
+async def list_snapshots(ctx: AuthContext = Depends(current_auth_context)) -> list[Snapshot]:
     db = get_session()
-    return db.exec(select(Snapshot).order_by(Snapshot.created_at.desc())).all()
+    return db.exec(
+        select(Snapshot)
+        .where(Snapshot.org_id == ctx.membership.organization_id)
+        .order_by(Snapshot.created_at.desc())
+    ).all()
 
 
 @router.post("/{snapshot_id}/sandboxes", status_code=201)
-async def restore_snapshot(snapshot_id: str) -> Sandbox:
+async def restore_snapshot(snapshot_id: str, ctx: AuthContext = Depends(current_auth_context)) -> Sandbox:
     db = get_session()
     snapshot = db.get(Snapshot, snapshot_id)
     node = db.exec(select(Node).order_by(Node.name)).first()
-    if snapshot is None:
+    if snapshot is None or snapshot.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "snapshot not found")
     if node is None:
         raise HTTPException(404, "no nodes registered")
@@ -41,6 +46,7 @@ async def restore_snapshot(snapshot_id: str) -> Sandbox:
     sandbox = Sandbox(
         id=response.json()["id"],
         node_id=node.id,
+        org_id=ctx.membership.organization_id,
         launch_config=snapshot.launch_config,
     )
     db.add(sandbox)
@@ -59,10 +65,10 @@ async def restore_snapshot(snapshot_id: str) -> Sandbox:
 
 
 @router.delete("/{snapshot_id}", status_code=204)
-async def delete_snapshot(snapshot_id: str) -> None:
+async def delete_snapshot(snapshot_id: str, ctx: AuthContext = Depends(current_auth_context)) -> None:
     db = get_session()
     snapshot = db.get(Snapshot, snapshot_id)
-    if snapshot is None:
+    if snapshot is None or snapshot.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "snapshot not found")
     try:
         storage.delete_snapshot(snapshot.id)

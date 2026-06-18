@@ -6,7 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .services import warm_pool
 from .config import settings
 from .db import init_db
-from .routers import nodes, sandboxes, snapshots, waitlist
+from .routers import auth, nodes, sandboxes, snapshots, waitlist
 
 init_db()
 
@@ -20,6 +20,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router)
 app.include_router(nodes.router)
 app.include_router(sandboxes.router)
 app.include_router(snapshots.router)

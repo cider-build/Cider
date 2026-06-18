@@ -5,9 +5,9 @@ import httpx
 from fastapi import HTTPException
 from sqlmodel import select
 
-from .config import settings
-from .db import get_session
-from .models import Node, Sandbox
+from ..config import settings
+from ..db import get_session
+from ..models import Node, Sandbox
 
 http = httpx.AsyncClient(timeout=None)
 warming = defaultdict(int)
@@ -47,7 +47,7 @@ async def warm_one(node):
         warming[node.id] = max(0, warming[node.id] - 1)
 
 
-async def create_sandbox_on_available_node():
+async def create_sandbox_on_available_node(org_id: str):
     for _ in range(settings.sandbox_create_wait_seconds):
         db = get_session()
         nodes = db.exec(select(Node).order_by(Node.name)).all()
@@ -60,10 +60,12 @@ async def create_sandbox_on_available_node():
                     Sandbox.node_id == node.id,
                     Sandbox.deleted_at.is_(None),
                     Sandbox.status == "warm",
+                    Sandbox.org_id.is_(None),
                 )
             ).first()
             if warm is not None:
                 warm.status = "active"
+                warm.org_id = org_id
                 db.add(warm)
                 db.commit()
                 db.refresh(warm)
@@ -75,7 +77,7 @@ async def create_sandbox_on_available_node():
                 response = await http.post(f"{node.url.rstrip('/')}/sandboxes")
                 if response.status_code >= 400:
                     raise HTTPException(response.status_code, response.text)
-                sandbox = Sandbox(id=response.json()["id"], node_id=node.id, status="active")
+                sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=org_id, status="active")
                 db.add(sandbox)
                 db.commit()
                 db.refresh(sandbox)
