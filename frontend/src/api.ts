@@ -4,9 +4,11 @@ export type AuthOut = {
   user: { id: string; email: string };
   organization: { id: string; name: string };
 };
-
 export type LoginInput = { email: string; password: string };
 export type SignupInput = LoginInput & { organization_name: string };
+export type Node = { id: string; name: string; url: string };
+export type NodeInput = { name: string; url: string };
+export type Sandbox = { id: string; node_id: string; status: string; created_at: string; deleted_at: string | null };
 
 export async function me(): Promise<AuthOut | null> {
   const response = await fetch(`${API_URL}/auth/me`, { credentials: "include" });
@@ -40,4 +42,32 @@ export async function login(body: LoginInput): Promise<AuthOut> {
 export async function logout(): Promise<void> {
   const response = await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" });
   if (!response.ok) throw new Error(await response.text());
+}
+
+export async function listNodes(): Promise<Node[]> {
+  const response = await fetch(`${API_URL}/nodes`, { credentials: "include" });
+  if (!response.ok) throw new Error(await response.text());
+  return await response.json();
+}
+
+export async function createNode(body: NodeInput): Promise<Node> {
+  const response = await fetch(`${API_URL}/nodes`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) throw new Error(await response.text());
+  return await response.json();
+}
+
+export async function deleteNode(id: string): Promise<void> {
+  const response = await fetch(`${API_URL}/nodes/${id}`, { method: "DELETE", credentials: "include" });
+  if (!response.ok) throw new Error(await response.text());
+}
+
+export async function listSandboxes(): Promise<Sandbox[]> {
+  const response = await fetch(`${API_URL}/sandboxes`, { credentials: "include" });
+  if (!response.ok) throw new Error(await response.text());
+  return await response.json();
 }
