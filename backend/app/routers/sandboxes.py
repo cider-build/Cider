@@ -64,7 +64,7 @@ async def list_sandboxes(ctx: AuthContext = Depends(current_auth_context)) -> li
     db = get_session()
     return db.exec(
         select(Sandbox)
-        .where(Sandbox.deleted_at.is_(None), Sandbox.status == "active", Sandbox.org_id == ctx.membership.organization_id)
+        .where(Sandbox.org_id == ctx.membership.organization_id)
         .order_by(Sandbox.created_at.desc())
     ).all()
 
