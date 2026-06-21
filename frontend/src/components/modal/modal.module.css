@@ -1,0 +1,42 @@
+.backdrop {
+  align-items: center;
+  background: rgba(0, 0, 0, 0.24);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  position: fixed;
+  z-index: 10;
+}
+
+.modal {
+  background: #ffffff;
+  border: 2px solid #ff8200;
+  border-radius: 12px;
+  box-shadow: 8px 8px 0 0 #b76900;
+  display: grid;
+  gap: 18px;
+  max-width: 420px;
+  padding: 18px;
+  width: calc(100% - 32px);
+}
+
+.header {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+}
+
+.header h2 {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin: 0;
+}
+
+.header button {
+  background: transparent;
+  border: 0;
+  color: #737373;
+  cursor: pointer;
+  font-weight: 600;
+}

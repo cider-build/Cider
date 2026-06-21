@@ -1,6 +1,9 @@
+import math
+
 import httpx
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
+from sqlalchemy import func
 from sqlmodel import select
 
 from ..auth import AuthContext, current_auth_context
@@ -10,6 +13,7 @@ from ..models import Node
 
 router = APIRouter(prefix="/nodes")
 http = httpx.AsyncClient()
+PAGE_SIZE = 10
 
 
 class NodeIn(BaseModel):
@@ -17,10 +21,31 @@ class NodeIn(BaseModel):
     url: str
 
 
+class NodePage(BaseModel):
+    items: list[Node]
+    page: int
+    pages: int
+    total: int
+
+
 @router.get("")
-async def list_nodes(ctx: AuthContext = Depends(current_auth_context)) -> list[Node]:
+async def list_nodes(
+    ctx: AuthContext = Depends(current_auth_context),
+    page: int = Query(default=1, ge=1),
+    search: str = "",
+) -> NodePage:
     db = get_session()
-    return db.exec(select(Node).where(Node.org_id == ctx.membership.organization_id).order_by(Node.name)).all()
+    query = select(Node).where(Node.org_id == ctx.membership.organization_id)
+    count_query = select(func.count()).select_from(Node).where(Node.org_id == ctx.membership.organization_id)
+    if search:
+        like = f"%{search}%"
+        query = query.where(Node.name.like(like))
+        count_query = count_query.where(Node.name.like(like))
+    total = db.exec(count_query).one()
+    pages = max(1, math.ceil(total / PAGE_SIZE))
+    page = min(page, pages)
+    items = db.exec(query.order_by(Node.name).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)).all()
+    return NodePage(items=items, page=page, pages=pages, total=total)
 
 
 @router.post("", status_code=201)
