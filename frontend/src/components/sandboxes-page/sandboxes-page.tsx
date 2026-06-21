@@ -1,21 +1,25 @@
 import { useQuery } from "@tanstack/react-query";
 import { listSandboxes } from "../../api";
 import type { Sandbox } from "../../api";
+import { PageHeader } from "../page-header/page-header";
 import styles from "./sandboxes-page.module.css";
 
-function SandboxList({ title, sandboxes }: { title: string; sandboxes: Sandbox[] }) {
+function createdAt(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function SandboxRow({ sandbox }: { sandbox: Sandbox }) {
   return (
-    <section className={styles.group}>
-      <h3>{title}</h3>
-      <div className={styles.list}>
-        {sandboxes.map((sandbox) => (
-          <article className={styles.item} key={sandbox.id}>
-            <strong>{sandbox.id}</strong>
-            <span>{sandbox.status}</span>
-          </article>
-        ))}
-      </div>
-    </section>
+    <article className={styles.row}>
+      <strong>{sandbox.id}</strong>
+      <span>{sandbox.deleted_at ? "Deleted" : "Active"}</span>
+      <time>{createdAt(sandbox.created_at)}</time>
+    </article>
   );
 }
 
@@ -25,14 +29,19 @@ export function SandboxesPage() {
   if (sandboxes.status === "pending") return "Loading...";
   if (sandboxes.error) return <p className={styles.error}>{sandboxes.error.message}</p>;
 
-  const active = sandboxes.data.filter((sandbox) => sandbox.deleted_at === null);
-  const previous = sandboxes.data.filter((sandbox) => sandbox.deleted_at !== null);
-
   return (
     <section className={styles.page}>
-      <h2>Sandboxes</h2>
-      <SandboxList title="Active" sandboxes={active} />
-      <SandboxList title="Previous" sandboxes={previous} />
+      <PageHeader title="Sandboxes" />
+      <div className={styles.container}>
+        <div className={styles.tableHeader}>
+          <span>Sandbox</span>
+          <span>Status</span>
+          <span>Created</span>
+        </div>
+        <div className={styles.rows}>
+          {sandboxes.data.map((sandbox) => <SandboxRow key={sandbox.id} sandbox={sandbox} />)}
+        </div>
+      </div>
     </section>
   );
 }

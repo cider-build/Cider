@@ -2,6 +2,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { deleteNode, listNodes } from "../../api";
+import { PageHeader } from "../page-header/page-header";
 import { RegisterNode } from "../register-node/register-node";
 import { TextInput } from "../text-input/text-input";
 import styles from "./nodes-page.module.css";
@@ -31,10 +32,10 @@ export function NodesPage() {
 
   return (
     <section className={styles.page}>
-      <header className={styles.header}>
-        <h2>Nodes</h2>
+      <PageHeader title="Nodes" />
+      <div className={styles.actions}>
         {data && (data.total > 0 || search !== "") && <RegisterNode text="Add new node" />}
-      </header>
+      </div>
       {nodes.status === "pending" ? (
         "Loading..."
       ) : nodes.error ? (
