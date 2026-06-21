@@ -4,11 +4,12 @@ import json
 import tarfile
 
 import httpx
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlmodel import select
 
 from .. import storage
+from ..auth import AuthContext, current_auth_context
 from ..config import settings
 from ..services import warm_pool
 from ..db import get_session
@@ -20,6 +21,15 @@ http = httpx.AsyncClient(timeout=None)
 
 class ExecuteInput(BaseModel):
     command: str
+
+
+class SandboxWithNode(BaseModel):
+    id: str
+    node_id: str
+    node_name: str
+    status: str
+    created_at: datetime
+    deleted_at: datetime | None
 
 
 async def cleanup_expired_sandboxes() -> None:
@@ -59,23 +69,28 @@ def extract_launch_config(archive: bytes) -> dict | None:
 
 
 @router.get("")
-async def list_sandboxes() -> list[Sandbox]:
+async def list_sandboxes(ctx: AuthContext = Depends(current_auth_context)) -> list[SandboxWithNode]:
     db = get_session()
-    return db.exec(
-        select(Sandbox)
-        .where(Sandbox.deleted_at.is_(None), Sandbox.status == "active")
+    rows = db.exec(
+        select(Sandbox, Node)
+        .join(Node, Sandbox.node_id == Node.id)
+        .where(Sandbox.org_id == ctx.membership.organization_id)
         .order_by(Sandbox.created_at.desc())
     ).all()
+    return [SandboxWithNode(**sandbox.model_dump(), node_name=node.name) for sandbox, node in rows]
 
 
 @router.post("", status_code=201)
-async def create_sandbox(archive: UploadFile | None = File(None)) -> Sandbox:
+async def create_sandbox(
+    archive: UploadFile | None = File(None),
+    ctx: AuthContext = Depends(current_auth_context),
+) -> Sandbox:
     db = get_session()
     config = None
 
     try:
         if archive is None:
-            node, sandbox = await warm_pool.create_sandbox_on_available_node()
+            node, sandbox = await warm_pool.create_sandbox_on_available_node(ctx.membership.organization_id)
         else:
             node = db.exec(select(Node).order_by(Node.name)).first()
             if node is None:
@@ -90,7 +105,7 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> Sandbox:
             )
             if response.status_code >= 400:
                 raise HTTPException(response.status_code, response.text)
-            sandbox = Sandbox(id=response.json()["id"], node_id=node.id, launch_config=config)
+            sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=ctx.membership.organization_id, launch_config=config)
             db.add(sandbox)
             db.commit()
             db.refresh(sandbox)
@@ -111,17 +126,17 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> Sandbox:
 
 
 @router.post("/{sandbox_id}/snapshots", status_code=201)
-async def snapshot_sandbox(sandbox_id: str) -> Snapshot:
+async def snapshot_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> Snapshot:
     db = get_session()
     sandbox = db.get(Sandbox, sandbox_id)
-    if sandbox is None or sandbox.deleted_at is not None:
+    if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "sandbox not found")
 
     node = db.get(Node, sandbox.node_id)
     if node is None:
         raise HTTPException(404, "node not found")
 
-    snapshot = Snapshot(source_sandbox_id=sandbox.id, launch_config=sandbox.launch_config)
+    snapshot = Snapshot(source_sandbox_id=sandbox.id, org_id=ctx.membership.organization_id, launch_config=sandbox.launch_config)
     try:
         async with http.stream("POST", f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/export") as response:
             if response.status_code >= 400:
@@ -137,16 +152,16 @@ async def snapshot_sandbox(sandbox_id: str) -> Snapshot:
 
 
 @router.post("/{sandbox_id}/execute", status_code=200)
-async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
+async def execute_sandbox(sandbox_id: str, body: ExecuteInput, ctx: AuthContext = Depends(current_auth_context)) -> dict:
     db = get_session()
     sandbox = db.get(Sandbox, sandbox_id)
-    if sandbox is None or sandbox.deleted_at is not None:
+    if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "sandbox not found")
 
     node = db.get(Node, sandbox.node_id)
     if node is None:
         raise HTTPException(404, "node not found")
-        
+
     try:
         response = await http.post(f"{node.url}/sandboxes/{sandbox.id}/execute", json={"command": body.command})
     except httpx.HTTPError as e:
@@ -159,10 +174,10 @@ async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
 
 
 @router.post("/{sandbox_id}/display", status_code=200)
-async def open_display(sandbox_id: str) -> dict:
+async def open_display(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> dict:
     db = get_session()
     sandbox = db.get(Sandbox, sandbox_id)
-    if sandbox is None or sandbox.deleted_at is not None:
+    if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "sandbox not found")
 
     node = db.get(Node, sandbox.node_id)
@@ -181,15 +196,14 @@ async def open_display(sandbox_id: str) -> dict:
 
 
 @router.delete("/{sandbox_id}", status_code=204)
-async def delete_sandbox(sandbox_id: str) -> None:
+async def delete_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> None:
     db = get_session()
     sandbox = db.get(Sandbox, sandbox_id)
 
-    if sandbox is None or sandbox.deleted_at is not None:
+    if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "sandbox not found")
 
     node = db.get(Node, sandbox.node_id)
-    
     if node is None:
         raise HTTPException(404, "node not found")
 

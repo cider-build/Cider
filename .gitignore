@@ -1,5 +1,7 @@
 # node / next
 node_modules/
+frontend/dist/
+landing-page/dist/
 .next/
 next-env.d.ts
 

@@ -1,0 +1,15 @@
+.orangeOffset {
+  background: #ff8200;
+  border: 0;
+  box-shadow: 3px 3px 0 0 #b76900;
+  color: #ffffff;
+  cursor: pointer;
+  font-weight: 600;
+  padding: 2px 8px;
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.orangeOffset:hover {
+  box-shadow: 1px 1px 0 0 #b76900;
+  transform: translate(2px, 2px);
+}

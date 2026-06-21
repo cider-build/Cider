@@ -1,0 +1,40 @@
+.account {
+  border-left: 3px solid #ff8200;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  padding-left: 10px;
+}
+
+.account p {
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.org {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.email {
+  color: #737373;
+  font-size: 11px;
+}
+
+.account button {
+  background: transparent;
+  border: 0;
+  color: #737373;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 650;
+  justify-self: start;
+  padding: 0;
+}
+
+.account button:hover {
+  color: #171717;
+}

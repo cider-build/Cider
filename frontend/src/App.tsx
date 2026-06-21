@@ -1,31 +1,23 @@
-import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { Account } from "./components/account/account";
+import { AuthForm } from "./components/auth-form/auth-form";
+import { NodesPage } from "./components/nodes-page/nodes-page";
+import { SandboxesPage } from "./components/sandboxes-page/sandboxes-page";
+import { SidebarLayout } from "./components/sidebar-layout/sidebar-layout";
+import type { Page } from "./components/sidebar-layout/sidebar-layout";
+import { me } from "./api";
 
-import CiderLogo from "@/components/CiderLogo";
-import WaitlistForm from "@/components/WaitlistForm";
+export function App() {
+  const auth = useQuery({ queryKey: ["me"], queryFn: me });
+  const [page, setPage] = useState<Page>("nodes");
 
-export default function App() {
-  useEffect(() => {
-    document.title = "cider.build — macOS sandboxes for AI agents";
-  }, []);
+  if (auth.status === "pending") return <main>Loading...</main>;
+  if (!auth.data) return <AuthForm />;
 
   return (
-    <main className="page-shell">
-      <section className="hero">
-        <CiderLogo iconSize={30} />
-
-        <h1>
-          MacOS Sandboxes
-          <br />
-          for Coding Agents.
-        </h1>
-
-        <p className="hero-subtitle">
-          Spin up MacOS instances for your agents to build, test, and interact
-          with native SwiftUI applications.
-        </p>
-
-        <WaitlistForm />
-      </section>
-    </main>
+    <SidebarLayout account={<Account auth={auth.data} />} page={page} setPage={setPage}>
+      {page === "nodes" ? <NodesPage /> : <SandboxesPage />}
+    </SidebarLayout>
   );
 }
