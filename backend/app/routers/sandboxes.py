@@ -23,6 +23,15 @@ class ExecuteInput(BaseModel):
     command: str
 
 
+class SandboxWithNode(BaseModel):
+    id: str
+    node_id: str
+    node_name: str
+    status: str
+    created_at: datetime
+    deleted_at: datetime | None
+
+
 async def cleanup_expired_sandboxes() -> None:
     db = get_session()
     cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=settings.sandbox_ttl_seconds)
@@ -60,13 +69,15 @@ def extract_launch_config(archive: bytes) -> dict | None:
 
 
 @router.get("")
-async def list_sandboxes(ctx: AuthContext = Depends(current_auth_context)) -> list[Sandbox]:
+async def list_sandboxes(ctx: AuthContext = Depends(current_auth_context)) -> list[SandboxWithNode]:
     db = get_session()
-    return db.exec(
-        select(Sandbox)
+    rows = db.exec(
+        select(Sandbox, Node)
+        .join(Node, Sandbox.node_id == Node.id)
         .where(Sandbox.org_id == ctx.membership.organization_id)
         .order_by(Sandbox.created_at.desc())
     ).all()
+    return [SandboxWithNode(**sandbox.model_dump(), node_name=node.name) for sandbox, node in rows]
 
 
 @router.post("", status_code=201)

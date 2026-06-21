@@ -9,7 +9,7 @@ export type SignupInput = LoginInput & { organization_name: string };
 export type Node = { id: string; name: string; url: string };
 export type NodeInput = { name: string; url: string };
 export type NodePage = { items: Node[]; page: number; pages: number; total: number };
-export type Sandbox = { id: string; node_id: string; status: string; created_at: string; deleted_at: string | null };
+export type Sandbox = { id: string; node_id: string; node_name: string; status: string; created_at: string; deleted_at: string | null };
 
 export async function me(): Promise<AuthOut | null> {
   const response = await fetch(`${API_URL}/auth/me`, { credentials: "include" });

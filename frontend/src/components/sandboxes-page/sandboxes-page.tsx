@@ -17,6 +17,7 @@ function SandboxRow({ sandbox }: { sandbox: Sandbox }) {
   return (
     <article className={styles.row}>
       <strong>{sandbox.id}</strong>
+      <span>{sandbox.node_name}</span>
       <span>{sandbox.deleted_at ? "Deleted" : "Active"}</span>
       <time>{createdAt(sandbox.created_at)}</time>
     </article>
@@ -35,6 +36,7 @@ export function SandboxesPage() {
       <div className={styles.container}>
         <div className={styles.tableHeader}>
           <span>Sandbox</span>
+          <span>Node</span>
           <span>Status</span>
           <span>Created</span>
         </div>

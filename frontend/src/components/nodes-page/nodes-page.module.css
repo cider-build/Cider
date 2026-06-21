@@ -1,13 +1,12 @@
 .page {
   display: grid;
-  gap: 20px;
   grid-template-rows: auto auto 1fr;
   height: 100%;
 }
 
 .actions {
+  margin: 16px 0 8px;
   display: flex;
-  justify-content: flex-end;
 }
 
 .empty {
