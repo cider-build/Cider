@@ -6,8 +6,7 @@ export type AuthOut = {
 };
 export type LoginInput = { email: string; password: string };
 export type SignupInput = LoginInput & { organization_name: string };
-export type Node = { id: string; name: string; url: string };
-export type NodeInput = { name: string; url: string };
+export type Node = { id: string; name: string; connected: boolean };
 export type NodePage = { items: Node[]; page: number; pages: number; total: number };
 export type Sandbox = { id: string; node_id: string; node_name: string; status: string; created_at: string; deleted_at: string | null };
 
@@ -48,17 +47,6 @@ export async function logout(): Promise<void> {
 export async function listNodes({ page, search }: { page: number; search: string }): Promise<NodePage> {
   const params = new URLSearchParams({ page: String(page), search });
   const response = await fetch(`${API_URL}/nodes?${params}`, { credentials: "include" });
-  if (!response.ok) throw new Error(await response.text());
-  return await response.json();
-}
-
-export async function createNode(body: NodeInput): Promise<Node> {
-  const response = await fetch(`${API_URL}/nodes`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
   if (!response.ok) throw new Error(await response.text());
   return await response.json();
 }

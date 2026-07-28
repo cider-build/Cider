@@ -52,3 +52,12 @@ class AuthSession(SQLModel, table=True):
     token_hash: str = Field(unique=True, index=True)
     expires_at: datetime = Field(index=True)
     created_at: datetime = Field(default_factory=now_utc)
+
+
+class ApiToken(SQLModel, table=True):
+    id: str = Field(default_factory=lambda: uuid.uuid4().hex, primary_key=True)
+    user_id: str = Field(foreign_key="user.id", index=True)
+    token_hash: str = Field(unique=True, index=True)
+    name: str
+    expires_at: datetime = Field(index=True)
+    created_at: datetime = Field(default_factory=now_utc)

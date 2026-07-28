@@ -6,12 +6,12 @@ from typing import Annotated
 
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError, VerificationError
-from fastapi import Cookie, Depends, HTTPException, Response, status
+from fastapi import Cookie, Depends, Header, HTTPException, Response, status
 from sqlmodel import Session, select
 
 from .config import settings
 from .db import get_session
-from .models import AuthSession, OrganizationMembership, User
+from .models import ApiToken, AuthSession, OrganizationMembership, User
 
 ph = PasswordHasher()
 
@@ -54,8 +54,22 @@ class AuthContext:
 
 def current_auth_context(
     cider_session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
+    authorization: Annotated[str | None, Header()] = None,
     db: Session = Depends(get_session),
 ) -> AuthContext:
+    if authorization:
+        scheme, separator, token = authorization.partition(" ")
+        if separator != " " or scheme.lower() != "bearer" or not token:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid authorization header")
+        api_token = db.exec(select(ApiToken).where(ApiToken.token_hash == hash_token(token))).first()
+        if api_token is None or api_token.expires_at <= utc_now():
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
+        user = db.get(User, api_token.user_id)
+        membership = db.exec(select(OrganizationMembership).where(OrganizationMembership.user_id == api_token.user_id)).first()
+        if user is None or membership is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
+        return AuthContext(user=user, membership=membership)
+
     if not cider_session:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
 

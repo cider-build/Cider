@@ -1,15 +1,13 @@
-import httpx
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
 from .. import storage
 from ..auth import AuthContext, current_auth_context
-from ..services import warm_pool
+from ..services import node_transport, warm_pool
 from ..db import get_session
-from ..models import Node, Sandbox, Snapshot
+from ..models import Sandbox, Snapshot
 
 router = APIRouter(prefix="/snapshots")
-http = httpx.AsyncClient(timeout=None)
 
 
 @router.get("")
@@ -26,22 +24,15 @@ async def list_snapshots(ctx: AuthContext = Depends(current_auth_context)) -> li
 async def restore_snapshot(snapshot_id: str, ctx: AuthContext = Depends(current_auth_context)) -> Sandbox:
     db = get_session()
     snapshot = db.get(Snapshot, snapshot_id)
-    node = db.exec(select(Node).order_by(Node.name)).first()
     if snapshot is None or snapshot.org_id != ctx.membership.organization_id:
         raise HTTPException(404, "snapshot not found")
-    if node is None:
-        raise HTTPException(404, "no nodes registered")
-    if not warm_pool.node_has_vm_capacity(db, node):
-        raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
+    node = warm_pool.require_available_node(db, ctx.membership.organization_id)
 
     try:
         with open(storage.snapshot_path(snapshot.id), "rb") as file:
-            response = await http.post(f"{node.url.rstrip('/')}/sandboxes/import", files={"archive": (f"{snapshot.id}.tgz", file)})
-    except (OSError, httpx.HTTPError) as e:
+            response = await node_transport.request(node, "POST", "/sandboxes/import", files={"archive": (f"{snapshot.id}.tgz", file)})
+    except OSError as e:
         raise HTTPException(502, str(e))
-
-    if response.status_code >= 400:
-        raise HTTPException(response.status_code, response.text)
 
     sandbox = Sandbox(
         id=response.json()["id"],
@@ -54,12 +45,7 @@ async def restore_snapshot(snapshot_id: str, ctx: AuthContext = Depends(current_
     db.refresh(sandbox)
 
     if snapshot.launch_config is not None:
-        try:
-            response = await http.post(f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/launch-config", json=snapshot.launch_config)
-        except httpx.HTTPError as e:
-            raise HTTPException(502, f"node unreachable: {e}")
-        if response.status_code >= 400:
-            raise HTTPException(response.status_code, response.text)
+        await node_transport.request(node, "POST", f"/sandboxes/{sandbox.id}/launch-config", json=snapshot.launch_config)
 
     return sandbox
 

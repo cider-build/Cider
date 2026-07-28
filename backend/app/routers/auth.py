@@ -1,13 +1,15 @@
+import secrets
+from datetime import timedelta
 from typing import Annotated
 
 from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
 from pydantic import BaseModel, EmailStr, Field
 from sqlmodel import Session, select
 
-from ..auth import AuthContext, clear_session_cookie, create_session, current_auth_context, hash_token, ph
+from ..auth import AuthContext, clear_session_cookie, create_session, current_auth_context, hash_token, ph, utc_now
 from ..config import settings
 from ..db import get_session
-from ..models import AuthSession, LocalCredential, Organization, OrganizationMembership, User, UserIdentity
+from ..models import ApiToken, AuthSession, LocalCredential, Organization, OrganizationMembership, User, UserIdentity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,6 +36,11 @@ class OrganizationOut(BaseModel):
 class AuthOut(BaseModel):
     user: UserOut
     organization: OrganizationOut
+
+
+class CliAuthOut(AuthOut):
+    token: str
+    expires_at: str
 
 
 def auth_out(user: User, org: Organization) -> AuthOut:
@@ -85,6 +92,36 @@ def login(body: AuthInput, response: Response, db: Session = Depends(get_session
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid account")
     create_session(db, response, user.id)
     return auth_out(user, org)
+
+
+@router.post("/cli/login")
+def cli_login(body: AuthInput, db: Session = Depends(get_session)) -> CliAuthOut:
+    email = body.email.lower()
+    user = db.exec(select(User).where(User.email == email)).first()
+    credential = db.get(LocalCredential, user.id) if user else None
+    if credential is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid email or password")
+    try:
+        ok = ph.verify(credential.password_hash, body.password)
+        if ok and ph.check_needs_rehash(credential.password_hash):
+            credential.password_hash = ph.hash(body.password)
+            db.add(credential)
+            db.commit()
+    except Exception:
+        ok = False
+    if not ok:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid email or password")
+
+    membership = db.exec(select(OrganizationMembership).where(OrganizationMembership.user_id == user.id)).first()
+    org = db.get(Organization, membership.organization_id) if membership else None
+    if org is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid account")
+    token = secrets.token_urlsafe(32)
+    expires_at = utc_now() + timedelta(days=settings.cli_token_days)
+    db.add(ApiToken(user_id=user.id, token_hash=hash_token(token), name="Cider CLI", expires_at=expires_at))
+    db.commit()
+    result = auth_out(user, org)
+    return CliAuthOut(**result.model_dump(), token=token, expires_at=expires_at.isoformat() + "Z")
 
 
 @router.post("/logout", status_code=204)

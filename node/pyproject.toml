@@ -10,7 +10,7 @@ dependencies = [
 ]
 
 [project.scripts]
-node = "app.main:run"
+cider-node = "app.main:run"
 
 [build-system]
 requires = ["hatchling"]

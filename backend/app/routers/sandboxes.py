@@ -3,7 +3,6 @@ import io
 import json
 import tarfile
 
-import httpx
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlmodel import select
@@ -11,12 +10,11 @@ from sqlmodel import select
 from .. import storage
 from ..auth import AuthContext, current_auth_context
 from ..config import settings
-from ..services import warm_pool
+from ..services import node_transport, warm_pool
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
 
 router = APIRouter(prefix="/sandboxes")
-http = httpx.AsyncClient(timeout=None)
 
 
 class ExecuteInput(BaseModel):
@@ -41,13 +39,12 @@ async def cleanup_expired_sandboxes() -> None:
         if node is None:
             continue
         try:
-            response = await http.delete(f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}")
-        except httpx.HTTPError:
+            await node_transport.request(node, "DELETE", f"/sandboxes/{sandbox.id}")
+        except HTTPException:
             continue
-        if response.status_code < 500:
-            sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-            db.add(sandbox)
-            nodes_to_refill.append(node)
+        sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.add(sandbox)
+        nodes_to_refill.append(node)
     db.commit()
     for node in nodes_to_refill:
         await warm_pool.ensure_node_has_warm_sandboxes(node)
@@ -92,35 +89,24 @@ async def create_sandbox(
         if archive is None:
             node, sandbox = await warm_pool.create_sandbox_on_available_node(ctx.membership.organization_id)
         else:
-            node = db.exec(select(Node).order_by(Node.name)).first()
-            if node is None:
-                raise HTTPException(404, "no nodes registered")
-            if not warm_pool.node_has_vm_capacity(db, node):
-                raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
+            node = warm_pool.require_available_node(db, ctx.membership.organization_id)
             archive_bytes = await archive.read()
             config = extract_launch_config(archive_bytes)
-            response = await http.post(
-                f"{node.url.rstrip('/')}/sandboxes",
+            response = await node_transport.request(
+                node,
+                "POST",
+                "/sandboxes",
                 files={"archive": (archive.filename, archive_bytes, archive.content_type)},
             )
-            if response.status_code >= 400:
-                raise HTTPException(response.status_code, response.text)
             sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=ctx.membership.organization_id, launch_config=config)
             db.add(sandbox)
             db.commit()
             db.refresh(sandbox)
     except ValueError as e:
         raise HTTPException(422, str(e))
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"node unreachable: {e}")
 
     if config is not None:
-        try:
-            response = await http.post(f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/launch-config", json=config)
-        except httpx.HTTPError as e:
-            raise HTTPException(502, f"node unreachable: {e}")
-        if response.status_code >= 400:
-            raise HTTPException(response.status_code, response.text)
+        await node_transport.request(node, "POST", f"/sandboxes/{sandbox.id}/launch-config", json=config)
 
     return sandbox
 
@@ -137,13 +123,8 @@ async def snapshot_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_a
         raise HTTPException(404, "node not found")
 
     snapshot = Snapshot(source_sandbox_id=sandbox.id, org_id=ctx.membership.organization_id, launch_config=sandbox.launch_config)
-    try:
-        async with http.stream("POST", f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}/export") as response:
-            if response.status_code >= 400:
-                raise HTTPException(response.status_code, (await response.aread()).decode())
-            await storage.save_snapshot(snapshot.id, response.aiter_bytes())
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"node unreachable: {e}")
+    response = await node_transport.request(node, "POST", f"/sandboxes/{sandbox.id}/export")
+    await storage.save_snapshot(snapshot.id, response.aiter_bytes())
 
     db.add(snapshot)
     db.commit()
@@ -162,35 +143,7 @@ async def execute_sandbox(sandbox_id: str, body: ExecuteInput, ctx: AuthContext 
     if node is None:
         raise HTTPException(404, "node not found")
 
-    try:
-        response = await http.post(f"{node.url}/sandboxes/{sandbox.id}/execute", json={"command": body.command})
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"node unreachable: {e}")
-
-    if response.status_code >= 400:
-        raise HTTPException(response.status_code, response.text)
-
-    return response.json()
-
-
-@router.post("/{sandbox_id}/display", status_code=200)
-async def open_display(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> dict:
-    db = get_session()
-    sandbox = db.get(Sandbox, sandbox_id)
-    if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
-        raise HTTPException(404, "sandbox not found")
-
-    node = db.get(Node, sandbox.node_id)
-    if node is None:
-        raise HTTPException(404, "node not found")
-
-    try:
-        response = await http.post(f"{node.url}/sandboxes/{sandbox.id}/display")
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"node unreachable: {e}")
-
-    if response.status_code >= 400:
-        raise HTTPException(response.status_code, response.text)
+    response = await node_transport.request(node, "POST", f"/sandboxes/{sandbox.id}/execute", json={"command": body.command})
 
     return response.json()
 
@@ -207,13 +160,7 @@ async def delete_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_aut
     if node is None:
         raise HTTPException(404, "node not found")
 
-    try:
-        response = await http.delete(f"{node.url.rstrip('/')}/sandboxes/{sandbox.id}")
-    except httpx.HTTPError as e:
-        raise HTTPException(502, f"node unreachable: {e}")
-
-    if response.status_code >= 400:
-        raise HTTPException(response.status_code, response.text)
+    await node_transport.request(node, "DELETE", f"/sandboxes/{sandbox.id}")
 
     sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
     db.add(sandbox)

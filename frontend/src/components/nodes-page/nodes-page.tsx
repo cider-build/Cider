@@ -3,7 +3,6 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
 import { deleteNode, listNodes } from "../../api";
 import { PageHeader } from "../page-header/page-header";
-import { RegisterNode } from "../register-node/register-node";
 import { TextInput } from "../text-input/text-input";
 import styles from "./nodes-page.module.css";
 
@@ -22,7 +21,6 @@ export function NodesPage() {
       await queryClient.invalidateQueries({ queryKey: ["nodes"] });
     },
   });
-
   function updateSearch(value: string) {
     setSearch(value);
     setPage(1);
@@ -33,16 +31,13 @@ export function NodesPage() {
   return (
     <section className={styles.page}>
       <PageHeader title="Nodes" />
-      <div className={styles.actions}>
-        {data && (data.total > 0 || search !== "") && <RegisterNode text="Add new node" />}
-      </div>
       {nodes.status === "pending" ? (
         "Loading..."
       ) : nodes.error ? (
         <p className={styles.error}>{nodes.error.message}</p>
       ) : data && data.total === 0 && search === "" ? (
         <div className={styles.empty}>
-          <RegisterNode text="Add a node" />
+          <p>Run <code>cider connect</code> on a Mac to add a node.</p>
         </div>
       ) : data ? (
         <div className={styles.container} data-fetching={nodes.isFetching}>
@@ -59,13 +54,14 @@ export function NodesPage() {
             </div>
           </div>
           <div className={styles.list}>
+            {remove.error && <p className={styles.error}>{remove.error.message}</p>}
             {data.items.map((node) => (
               <article className={styles.item} key={node.id}>
                 <div>
                   <strong>{node.name}</strong>
-                  <span>{node.url}</span>
+                  <span>{node.connected ? "Connected" : "Offline"}</span>
                 </div>
-                <button onClick={() => remove.mutate(node.id)} disabled={remove.isPending}>×</button>
+                <button aria-label={`Remove ${node.name}`} onClick={() => remove.mutate(node.id)} disabled={remove.isPending}>×</button>
               </article>
             ))}
           </div>

@@ -8,6 +8,7 @@ import * as tar from "tar";
 
 import { makeClient } from "./lib/api.js";
 import { readConfig } from "./lib/config.js";
+import { connect } from "./lib/connect.js";
 
 function printRows(rows, columns) {
   if (rows.length === 0) return;
@@ -64,6 +65,15 @@ export async function run(argv) {
     .description("Barebones CLI for the Cider backend")
     .version("0.1.0");
 
+  program
+    .command("connect")
+    .description("Install the Cider image and connect this Mac to your organization")
+    .option("--name <name>", "Node name")
+    .option("--image <reference>", "Tart OCI image reference")
+    .option("--node-command <path>", "Path to the cider-node executable")
+    .option("-y, --yes", "Install without prompting")
+    .action(connect);
+
   const nodes = program.command("nodes").description("Manage nodes");
 
   nodes
@@ -71,27 +81,19 @@ export async function run(argv) {
     .description("List nodes")
     .action(async () => {
       const rows = await client().listNodes();
-      printRows(rows, ["id", "name", "url"]);
-    });
-
-  nodes
-    .command("add <name> <url>")
-    .description("Register a node")
-    .action(async (name, url) => {
-      const node = await client().createNode(name, url);
-      process.stdout.write(`${node.id}\n`);
+      printRows(rows, ["id", "name", "connected"]);
     });
 
   nodes
     .command("delete <id>")
-    .description("Delete a node")
+    .description("Remove a node and revoke its credential")
     .action(async (id) => {
       await client().deleteNode(id);
     });
 
   program
     .command("open [path]")
-    .description("Create a sandbox and copy a local path into it")
+    .description("Create a sandbox from a local Git worktree")
     .action(async (path = ".") => {
       const archive = await archivePath(path);
       try {
@@ -126,18 +128,6 @@ export async function run(argv) {
     .action(async (id, command) => {
       const result = await client().executeSandbox(id, command.join(" "));
       process.stdout.write(result.output || "");
-    });
-
-  sandboxes
-    .command("display <id>")
-    .description("Open a VNC display session for a sandbox")
-    .option("--open", "Open the VNC URL with the OS default handler")
-    .action(async (id, options) => {
-      const display = await client().openDisplay(id);
-      if (options.open) {
-        await exec(process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open", process.platform === "win32" ? ["/c", "start", "", display.url] : [display.url]);
-      }
-      process.stdout.write(`${display.url}\n`);
     });
 
   sandboxes

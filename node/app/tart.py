@@ -4,6 +4,15 @@ import subprocess
 
 from . import config
 
+SSH_OPTIONS = [
+    "-i", config.SSH_KEY,
+    "-o", "BatchMode=yes",
+    "-o", "IdentitiesOnly=yes",
+    "-o", "StrictHostKeyChecking=no",
+    "-o", "UserKnownHostsFile=/dev/null",
+    "-o", "LogLevel=ERROR",
+]
+
 
 async def run(*args: str, check: bool = True) -> str:
     proc = await asyncio.create_subprocess_exec(
@@ -52,25 +61,18 @@ async def create(sandbox_id: str | None = None) -> str:
 
 async def upload(sandbox_id: str, archive_path: str) -> None:
     ip = (await tart("ip", sandbox_id, "--wait", str(config.START_TIMEOUT_SECONDS))).strip()
-    ssh = [
-        "-i", config.SSH_KEY,
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "LogLevel=ERROR",
-    ]
-    await run("scp", *ssh, archive_path, f"{config.SSH_USER}@{ip}:/tmp/cider-source.tgz")
+    await run("scp", *SSH_OPTIONS, archive_path, f"{config.SSH_USER}@{ip}:/tmp/cider-source.tgz")
     guest_dir = shlex.quote(config.GUEST_DIR)
     await run(
-        "ssh", *ssh, f"{config.SSH_USER}@{ip}",
+        "ssh", *SSH_OPTIONS, f"{config.SSH_USER}@{ip}",
         f"mkdir -p {guest_dir} && find {guest_dir} -mindepth 1 -maxdepth 1 -exec rm -rf {{}} + && tar -xzf /tmp/cider-source.tgz -C {guest_dir} && rm /tmp/cider-source.tgz",
     )
 
 
 async def export(sandbox_id: str, archive_path: str) -> None:
     ip = (await tart("ip", sandbox_id, "--wait", str(config.START_TIMEOUT_SECONDS))).strip()
-    ssh = ["-i", config.SSH_KEY, "-o", "StrictHostKeyChecking=no", "-o", "UserKnownHostsFile=/dev/null", "-o", "LogLevel=ERROR"]
-    await run("ssh", *ssh, f"{config.SSH_USER}@{ip}", f"mkdir -p {shlex.quote(config.GUEST_DIR)}")
-    await run_to_file(archive_path, "ssh", *ssh, f"{config.SSH_USER}@{ip}", f"tar -czf - -C {shlex.quote(config.GUEST_DIR)} .")
+    await run("ssh", *SSH_OPTIONS, f"{config.SSH_USER}@{ip}", f"mkdir -p {shlex.quote(config.GUEST_DIR)}")
+    await run_to_file(archive_path, "ssh", *SSH_OPTIONS, f"{config.SSH_USER}@{ip}", f"tar -czf - -C {shlex.quote(config.GUEST_DIR)} .")
 
 
 async def import_vm(archive_path: str, sandbox_id: str | None = None) -> str:
@@ -89,10 +91,4 @@ async def delete(sandbox_id: str) -> None:
 
 async def execute(sandbox_id: str, command: str) -> str:
     ip = (await tart("ip", sandbox_id, "--wait", str(config.START_TIMEOUT_SECONDS))).strip()
-    ssh = [
-        "-i", config.SSH_KEY,
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-o", "LogLevel=ERROR",
-    ]
-    return await run("ssh", *ssh, f"{config.SSH_USER}@{ip}", command)
+    return await run("ssh", *SSH_OPTIONS, f"{config.SSH_USER}@{ip}", command)

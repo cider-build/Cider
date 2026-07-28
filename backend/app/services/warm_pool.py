@@ -1,16 +1,24 @@
 import asyncio
 from collections import defaultdict
+from datetime import datetime, timezone
 
-import httpx
 from fastapi import HTTPException
 from sqlmodel import select
 
 from ..config import settings
 from ..db import get_session
 from ..models import Node, Sandbox
+from . import node_transport
+from .node_gateway import node_gateway
 
-http = httpx.AsyncClient(timeout=None)
 warming = defaultdict(int)
+
+
+def available_nodes(db, org_id: str | None = None):
+    query = select(Node)
+    if org_id is not None:
+        query = query.where(Node.org_id == org_id)
+    return [node for node in db.exec(query.order_by(Node.name)).all() if node_gateway.is_connected(node.id)]
 
 
 def node_has_vm_capacity(db, node):
@@ -18,10 +26,14 @@ def node_has_vm_capacity(db, node):
     return len(sandboxes) + warming[node.id] < settings.max_sandboxes_per_node
 
 
-async def start():
-    db = get_session()
-    for node in db.exec(select(Node).order_by(Node.name)).all():
-        await ensure_node_has_warm_sandboxes(node)
+def require_available_node(db, org_id: str):
+    nodes = available_nodes(db, org_id)
+    if not nodes:
+        raise HTTPException(404, "no nodes registered")
+    for node in nodes:
+        if node_has_vm_capacity(db, node):
+            return node
+    raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
 
 
 async def ensure_node_has_warm_sandboxes(node):
@@ -38,11 +50,10 @@ async def ensure_node_has_warm_sandboxes(node):
 
 async def warm_one(node):
     try:
-        response = await http.post(f"{node.url.rstrip('/')}/sandboxes")
-        if response.status_code < 400:
-            db = get_session()
-            db.add(Sandbox(id=response.json()["id"], node_id=node.id, status="warm"))
-            db.commit()
+        response = await node_transport.request(node, "POST", "/sandboxes")
+        db = get_session()
+        db.add(Sandbox(id=response.json()["id"], node_id=node.id, status="warm"))
+        db.commit()
     finally:
         warming[node.id] = max(0, warming[node.id] - 1)
 
@@ -50,7 +61,7 @@ async def warm_one(node):
 async def create_sandbox_on_available_node(org_id: str):
     for _ in range(settings.sandbox_create_wait_seconds):
         db = get_session()
-        nodes = db.exec(select(Node).order_by(Node.name)).all()
+        nodes = available_nodes(db, org_id)
         if not nodes:
             raise HTTPException(404, "no nodes registered")
 
@@ -66,6 +77,7 @@ async def create_sandbox_on_available_node(org_id: str):
             if warm is not None:
                 warm.status = "active"
                 warm.org_id = org_id
+                warm.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 db.add(warm)
                 db.commit()
                 db.refresh(warm)
@@ -74,9 +86,7 @@ async def create_sandbox_on_available_node(org_id: str):
 
         for node in nodes:
             if node_has_vm_capacity(db, node):
-                response = await http.post(f"{node.url.rstrip('/')}/sandboxes")
-                if response.status_code >= 400:
-                    raise HTTPException(response.status_code, response.text)
+                response = await node_transport.request(node, "POST", "/sandboxes")
                 sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=org_id, status="active")
                 db.add(sandbox)
                 db.commit()

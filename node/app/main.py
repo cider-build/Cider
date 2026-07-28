@@ -7,9 +7,14 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from starlette.background import BackgroundTask
 
-from . import display, tart
+from . import tart
 
 app = FastAPI(title="Cider Node")
+
+
+@app.get("/health")
+async def health() -> dict:
+    return {"status": "ok"}
 
 
 class ExecuteInput(BaseModel):
@@ -31,7 +36,8 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> dict:
         if archive is not None:
             with tempfile.NamedTemporaryFile(delete=False, suffix=".tgz") as file:
                 archive_path = file.name
-                file.write(await archive.read())
+                while chunk := await archive.read(1024 * 1024):
+                    file.write(chunk)
             await tart.upload(sandbox_id, archive_path)
         return {"id": sandbox_id}
     except RuntimeError as e:
@@ -104,33 +110,9 @@ async def run_launch_config(sandbox_id: str, body: LaunchConfigIn) -> None:
         raise HTTPException(500, str(e))
 
 
-@app.post("/sandboxes/{sandbox_id}/display", status_code=200)
-async def open_display(sandbox_id: str) -> dict:
-    try:
-        session = await display.open_display(sandbox_id)
-        return {
-            "id": session.id,
-            "protocol": "vnc",
-            "transport": "tcp",
-            "host": session.host,
-            "port": session.port,
-            "url": session.url,
-            "username": display.config.DISPLAY_USERNAME,
-            "password": display.config.DISPLAY_PASSWORD,
-        }
-    except RuntimeError as e:
-        raise HTTPException(500, str(e))
-
-
-@app.delete("/display/{session_id}", status_code=204)
-async def close_display(session_id: str) -> None:
-    await display.close_display(session_id)
-
-
 @app.delete("/sandboxes/{sandbox_id}", status_code=204)
 async def delete_sandbox(sandbox_id: str) -> None:
     try:
-        await display.close_sandbox_display(sandbox_id)
         await tart.delete(sandbox_id)
     except RuntimeError as e:
         raise HTTPException(500, str(e))
@@ -139,4 +121,4 @@ async def delete_sandbox(sandbox_id: str) -> None:
 def run() -> None:
     import uvicorn
 
-    uvicorn.run("app.main:app", host="0.0.0.0", port=8001, reload=False)
+    uvicorn.run("app.main:app", host="127.0.0.1", port=tart.config.NODE_PORT, reload=False)
