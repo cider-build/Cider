@@ -9,6 +9,7 @@ import * as tar from "tar";
 import { makeClient } from "./lib/api.js";
 import { readConfig } from "./lib/config.js";
 import { connect } from "./lib/connect.js";
+import { ssh } from "./lib/ssh.js";
 
 function printRows(rows, columns) {
   if (rows.length === 0) return;
@@ -69,7 +70,7 @@ export async function run(argv) {
     .command("connect")
     .description("Install the Cider image and connect this Mac to your organization")
     .option("--name <name>", "Node name")
-    .option("--image <reference>", "Tart OCI image reference")
+    .option("--image <name:tag>", "Pinned Lume base image")
     .option("--node-command <path>", "Path to the cider-node executable")
     .option("-y, --yes", "Install without prompting")
     .action(connect);
@@ -104,6 +105,15 @@ export async function run(argv) {
       }
     });
 
+  program
+    .command("ssh [sandbox]")
+    .description("SSH into a sandbox")
+    .option("-l, --list", "List available sandboxes")
+    .option("-n, --new [node]", "Create a sandbox, optionally on a node, then connect")
+    .action(async (sandbox, options) => {
+      await ssh(readConfig(), sandbox, options);
+    });
+
   const sandboxes = program.command("sandboxes").description("Manage sandboxes");
 
   sandboxes
@@ -111,14 +121,14 @@ export async function run(argv) {
     .description("List sandboxes")
     .action(async () => {
       const rows = await client().listSandboxes();
-      printRows(rows, ["id", "node_id", "created_at"]);
+      printRows(rows, ["id", "node_id", "status", "created_at"]);
     });
 
   sandboxes
     .command("create")
-    .description("Create a sandbox")
+    .description("Create a persistent blank sandbox VM")
     .action(async () => {
-      const sandbox = await client().createSandbox();
+      const sandbox = await client().createSandbox(undefined, { persistent: true });
       process.stdout.write(`${sandbox.id}\n`);
     });
 
@@ -132,7 +142,7 @@ export async function run(argv) {
 
   sandboxes
     .command("snapshot <id>")
-    .description("Snapshot a sandbox")
+    .description("Stop a sandbox and save a portable snapshot in Cider storage")
     .action(async (id) => {
       const snapshot = await client().snapshotSandbox(id);
       process.stdout.write(`${snapshot.id}\n`);
@@ -157,9 +167,10 @@ export async function run(argv) {
 
   snapshots
     .command("restore <id>")
-    .description("Create a sandbox from a snapshot")
-    .action(async (id) => {
-      const sandbox = await client().restoreSnapshot(id);
+    .description("Restore a stopped sandbox onto a connected node")
+    .option("--node <id>", "Destination node ID")
+    .action(async (id, options) => {
+      const sandbox = await client().restoreSnapshot(id, options.node);
       process.stdout.write(`${sandbox.id}\n`);
     });
 

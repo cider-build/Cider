@@ -13,6 +13,11 @@ def get_session() -> Session:
     return Session(engine)
 
 
+def session_dependency():
+    with get_session() as session:
+        yield session
+
+
 def init_db() -> None:
     from . import models  # noqa: F401
 

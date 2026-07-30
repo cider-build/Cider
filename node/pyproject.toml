@@ -1,7 +1,7 @@
 [project]
 name = "node"
 version = "0.1.0"
-description = "Cider node: runs on a Mac, manages up to two macOS sandbox VMs via Tart."
+description = "Cider node: runs on a Mac and manages macOS sandbox VMs via Lume."
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

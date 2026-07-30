@@ -1,5 +1,3 @@
-import { PassThrough } from "node:stream";
-
 import WebSocket from "ws";
 
 import { NODE_URL } from "./config.js";
@@ -18,6 +16,16 @@ function websocketUrl(apiUrl, nodeId) {
   else if (url.protocol === "http:") url.protocol = "ws:";
   else throw new Error(`unsupported Cider API protocol: ${url.protocol}`);
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/node-connections/${nodeId}`;
+  url.search = "";
+  return url.toString();
+}
+
+function websocketPath(baseUrl, path) {
+  const url = new URL(baseUrl);
+  if (url.protocol === "https:") url.protocol = "wss:";
+  else if (url.protocol === "http:") url.protocol = "ws:";
+  else throw new Error(`unsupported WebSocket protocol: ${url.protocol}`);
+  url.pathname = `${url.pathname.replace(/\/+$/, "")}${path}`;
   url.search = "";
   return url.toString();
 }
@@ -81,6 +89,7 @@ function runConnection(config, node, nodeUrl, state) {
     });
     state.socket = socket;
     const requests = new Map();
+    const sshTunnels = new Set();
     let lastActivity = Date.now();
     let heartbeat;
     let settled = false;
@@ -89,8 +98,13 @@ function runConnection(config, node, nodeUrl, state) {
       settled = true;
       clearInterval(heartbeat);
       if (state.socket === socket) state.socket = null;
-      for (const request of requests.values()) request.body.destroy();
+      for (const request of requests.values()) request.controller.abort();
       requests.clear();
+      for (const tunnel of sshTunnels) {
+        closeSocket(tunnel.upstream);
+        closeSocket(tunnel.downstream);
+      }
+      sshTunnels.clear();
       if (error) reject(error);
       else resolve();
     };
@@ -121,29 +135,64 @@ function runConnection(config, node, nodeUrl, state) {
           const id = frame.subarray(0, 16).toString("hex");
           const request = requests.get(id);
           if (!request) return;
-          if (!request.body.write(frame.subarray(17))) {
-            socket.pause();
-            request.body.once("drain", () => socket.resume());
-          }
+          if (request.forwarding) throw new Error("tunnel request body received after final frame");
+          const chunk = frame.subarray(17);
+          request.received += chunk.length;
+          if (request.received > request.body_length) throw new Error("tunnel request body exceeds declared length");
+          request.chunks.push(chunk);
           if (frame[16] === 1) {
-            requests.delete(id);
-            request.body.end();
+            if (request.received !== request.body_length) throw new Error("tunnel request body length mismatch");
+            request.body = Buffer.concat(request.chunks, request.received);
+            request.chunks = [];
+            request.forwarding = true;
+            forwardRequest(socket, request, nodeUrl)
+              .catch((error) => sendErrorResponse(socket, request.id, error))
+              .catch(() => socket.terminate())
+              .finally(() => requests.delete(request.id));
           }
           return;
         }
 
         const message = JSON.parse(data.toString());
         if (message.type === "heartbeat_ack") return;
+        if (message.type === "ssh_open") {
+          if (
+            !/^[0-9a-f]{32}$/.test(message.id)
+            || typeof message.sandbox_id !== "string"
+            || !message.sandbox_id.startsWith("cider-")
+          ) {
+            throw new Error("invalid SSH tunnel request");
+          }
+          const tunnel = { upstream: null, downstream: null };
+          sshTunnels.add(tunnel);
+          openSshTunnel(config, node, nodeUrl, message, tunnel)
+            .catch(async (error) => {
+              if (socket.readyState === WebSocket.OPEN) {
+                await socketSend(socket, JSON.stringify({
+                  type: "ssh_error",
+                  id: message.id,
+                  detail: error.message,
+                }));
+              }
+            })
+            .catch(() => socket.terminate())
+            .finally(() => sshTunnels.delete(tunnel));
+          return;
+        }
         if (message.type !== "request" || !message.id || !message.method || !message.path) {
           throw new Error("invalid tunnel control message");
         }
-        const request = { ...message, body: new PassThrough() };
+        if (!Number.isSafeInteger(message.body_length) || message.body_length < 0) {
+          throw new Error("invalid tunnel request body length");
+        }
+        const request = {
+          ...message,
+          chunks: [],
+          received: 0,
+          forwarding: false,
+          controller: new AbortController(),
+        };
         requests.set(message.id, request);
-        forwardRequest(socket, request, nodeUrl).catch((error) => {
-          requests.delete(request.id);
-          request.body.destroy();
-          sendErrorResponse(socket, request.id, error).catch(() => socket.terminate());
-        });
       } catch {
         socket.close(1003, "invalid gateway message");
       }
@@ -170,6 +219,98 @@ function runConnection(config, node, nodeUrl, state) {
       finish(error);
     });
   });
+}
+
+function closeSocket(socket) {
+  if (!socket) return;
+  if (socket.readyState === WebSocket.OPEN) socket.close(1000);
+  else if (socket.readyState !== WebSocket.CLOSED) socket.terminate();
+}
+
+function waitForOpen(socket, label) {
+  return new Promise((resolve, reject) => {
+    const opened = () => {
+      cleanup();
+      resolve();
+    };
+    const failed = (error) => {
+      cleanup();
+      reject(error);
+    };
+    const rejected = (request, response) => {
+      request.destroy();
+      cleanup();
+      reject(new Error(`${label} rejected the tunnel (HTTP ${response.statusCode})`));
+    };
+    const closed = (code, reason) => {
+      cleanup();
+      reject(new Error(`${label} closed during startup (${code}): ${reason.toString()}`));
+    };
+    const cleanup = () => {
+      socket.off("open", opened);
+      socket.off("error", failed);
+      socket.off("unexpected-response", rejected);
+      socket.off("close", closed);
+    };
+    socket.once("open", opened);
+    socket.once("error", failed);
+    socket.once("unexpected-response", rejected);
+    socket.once("close", closed);
+  });
+}
+
+function bridgeWebSockets(first, second) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const finish = (error) => {
+      if (settled) return;
+      settled = true;
+      closeSocket(first);
+      closeSocket(second);
+      if (error) reject(error);
+      else resolve();
+    };
+    const forward = (destination) => (data, isBinary) => {
+      if (!isBinary) {
+        finish(new Error("SSH tunnel received a text frame"));
+        return;
+      }
+      if (destination.readyState !== WebSocket.OPEN) return;
+      destination.send(data, (error) => {
+        if (error) finish(error);
+      });
+    };
+    first.on("message", forward(second));
+    second.on("message", forward(first));
+    first.once("error", finish);
+    second.once("error", finish);
+    first.once("close", () => finish());
+    second.once("close", () => finish());
+  });
+}
+
+async function openSshTunnel(config, node, nodeUrl, message, tunnel) {
+  tunnel.downstream = new WebSocket(
+    websocketPath(
+      nodeUrl,
+      `/sandboxes/${encodeURIComponent(message.sandbox_id)}/ssh`,
+    ),
+    { handshakeTimeout: 30_000 },
+  );
+  await waitForOpen(tunnel.downstream, "cider-node");
+
+  tunnel.upstream = new WebSocket(
+    websocketPath(
+      config.apiUrl,
+      `/node-ssh/${encodeURIComponent(node.id)}/${message.id}`,
+    ),
+    {
+      headers: { Authorization: `Bearer ${node.token}` },
+      handshakeTimeout: 30_000,
+    },
+  );
+  await waitForOpen(tunnel.upstream, "Cider backend");
+  await bridgeWebSockets(tunnel.downstream, tunnel.upstream);
 }
 
 function socketSend(socket, data) {
@@ -201,7 +342,7 @@ export async function forwardRequest(socket, request, nodeUrl = NODE_URL) {
     method: request.method,
     headers,
     body: hasBody ? request.body : undefined,
-    duplex: hasBody ? "half" : undefined,
+    signal: request.controller.signal,
   });
   const responseHeaders = {};
   for (const [key, value] of response.headers) responseHeaders[key] = value;

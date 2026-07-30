@@ -23,11 +23,13 @@ async function request(config, path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-async function sandboxForm(archivePath) {
+async function sandboxForm(archivePath, persistent, nodeId) {
   const form = new FormData();
   if (archivePath) {
     form.set("archive", new Blob([await readFile(archivePath)]), basename(archivePath));
   }
+  if (persistent) form.set("persistent", "true");
+  if (nodeId) form.set("node_id", nodeId);
   return form;
 }
 
@@ -54,9 +56,14 @@ export function makeClient(config) {
     },
     listSandboxes: () => request(config, "/sandboxes"),
     listSnapshots: () => request(config, "/snapshots"),
-    createSandbox: async (archivePath) => request(config, "/sandboxes", {
+    listSshTargets: () => request(config, "/ssh"),
+    selectSshTarget: (sandboxId) => request(config, "/ssh", {
       method: "POST",
-      form: await sandboxForm(archivePath),
+      body: { sandbox_id: sandboxId },
+    }),
+    createSandbox: async (archivePath, { persistent = false, nodeId } = {}) => request(config, "/sandboxes", {
+      method: "POST",
+      form: await sandboxForm(archivePath, persistent, nodeId),
     }),
     executeSandbox: (id, command) => request(config, `/sandboxes/${id}/execute`, {
       method: "POST",
@@ -64,7 +71,10 @@ export function makeClient(config) {
     }),
     deleteNode: (id) => request(config, `/nodes/${id}`, { method: "DELETE" }),
     snapshotSandbox: (id) => request(config, `/sandboxes/${id}/snapshots`, { method: "POST" }),
-    restoreSnapshot: (id) => request(config, `/snapshots/${id}/sandboxes`, { method: "POST" }),
+    restoreSnapshot: (id, nodeId) => request(config, `/snapshots/${id}/restore`, {
+      method: "POST",
+      body: { node_id: nodeId },
+    }),
     deleteSnapshot: (id) => request(config, `/snapshots/${id}`, { method: "DELETE" }),
     deleteSandbox: (id) => request(config, `/sandboxes/${id}`, { method: "DELETE" }),
   };

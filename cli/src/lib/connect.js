@@ -1,6 +1,8 @@
 import { execFile, spawn } from "node:child_process";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
-import { hostname, tmpdir } from "node:os";
+import { createReadStream } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -17,19 +19,11 @@ import { confirm, passwordQuestion, question } from "./prompts.js";
 import { holdConnection } from "./tunnel.js";
 
 const exec = promisify(execFile);
-const IMAGE_NAME = "cider-base-v0.1.0";
-const DEFAULT_IMAGE_REF = "ghcr.io/cirruslabs/macos-sequoia-base:latest";
-const SSH_USER = process.env.CIDER_SSH_USER || "admin";
+const IMAGE_NAME = "cider-base";
+const DEFAULT_IMAGE = "macos-tahoe-cua:26.5.2";
+const VM_STORAGE = join(CIDER_HOME, "vms");
+const SSH_USER = process.env.CIDER_SSH_USER || "lume";
 const SSH_KEY_PATH = process.env.CIDER_SSH_KEY || join(CIDER_HOME, "ssh_key");
-// The password the base image ships with, used once to install the Cider SSH key.
-const IMAGE_PASSWORD = process.env.CIDER_IMAGE_PASSWORD || "admin";
-const PROVISION_SSH_TIMEOUT_MS = 30_000;
-const PROVISION_DEADLINE_MS = 120_000;
-const BASE_SSH_OPTIONS = [
-  "-o", "StrictHostKeyChecking=no",
-  "-o", "UserKnownHostsFile=/dev/null",
-  "-o", "LogLevel=ERROR",
-];
 
 async function pathExists(path) {
   try {
@@ -39,10 +33,6 @@ async function pathExists(path) {
     if (error.code === "ENOENT") return false;
     throw error;
   }
-}
-
-function shellQuote(value) {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
 async function authenticatedConfig() {
@@ -77,95 +67,60 @@ async function ensureSshKey() {
   return (await readFile(`${SSH_KEY_PATH}.pub`, "utf8")).trim();
 }
 
-async function ensureImage({ assumeYes, imageRef }) {
+// Existence is decided by listing the storage and matching names: `lume get` exits
+// nonzero for both "not found" and operational failures, so any listing failure here
+// propagates instead of being read as "absent".
+async function listVms() {
+  const { stdout } = await exec("lume", ["ls", "-f", "json", "--storage", VM_STORAGE]);
+  return JSON.parse(stdout);
+}
+
+async function imageInstalled() {
+  return (await listVms()).some((vm) => vm.name === IMAGE_NAME);
+}
+
+async function ensureImage({ assumeYes, image }) {
   if (process.platform !== "darwin" || process.arch !== "arm64") {
     throw new Error("Cider nodes require Apple Silicon running macOS");
   }
-  await exec("tart", ["--version"]);
-  const tartHome = join(CIDER_HOME, "images", "tart");
-  const imagePath = join(tartHome, "vms", IMAGE_NAME);
-  if (await pathExists(imagePath)) return { imagePath, tartHome };
+  await exec("lume", ["--version"]);
+  await mkdir(VM_STORAGE, { recursive: true });
+  const referencePath = join(CIDER_HOME, `${IMAGE_NAME}.image-ref`);
+  if (await imageInstalled()) {
+    return await pathExists(referencePath) ? (await readFile(referencePath, "utf8")).trim() : null;
+  }
 
-  const install = assumeYes || await confirm(`Cider image is not installed at ${imagePath}. Install it now?`);
-  if (!install) throw new Error("Cider image installation declined");
-  process.stdout.write(`Installing ${imageRef} into ${imagePath}. This is a large download.\n`);
-  await exec("tart", ["clone", imageRef, IMAGE_NAME], {
-    env: { ...process.env, TART_HOME: tartHome },
-    maxBuffer: 1024 * 1024 * 10,
+  const install = assumeYes || await confirm(`Cider base VM "${IMAGE_NAME}" is not installed in ${VM_STORAGE}. Create it now?`);
+  if (!install) throw new Error("Cider base VM installation declined");
+  process.stdout.write(`Installing ${image} as ${IMAGE_NAME}. This is a large one-time download.\n`);
+  const pull = spawn("lume", [
+    "pull", image, IMAGE_NAME,
+    "--storage", VM_STORAGE,
+  ], { stdio: ["ignore", "inherit", "inherit"] });
+  const code = await new Promise((resolve, reject) => {
+    pull.once("exit", resolve);
+    pull.once("error", reject);
   });
-  if (!await pathExists(imagePath)) {
-    throw new Error(`Tart completed without creating ${imagePath}`);
+  if (code !== 0) throw new Error(`lume pull failed with exit code ${code}`);
+  if (!await imageInstalled()) {
+    throw new Error(`lume pull completed without creating the ${IMAGE_NAME} VM`);
   }
-  return { imagePath, tartHome };
+  await writeFile(referencePath, `${image}\n`);
+  return image;
 }
 
-async function installAuthorizedKey(ip, publicKey) {
-  const dir = await mkdtemp(join(tmpdir(), "cider-askpass-"));
-  const askpass = join(dir, "askpass.sh");
-  await writeFile(askpass, `#!/bin/sh\nprintf '%s' ${shellQuote(IMAGE_PASSWORD)}\n`, { mode: 0o700 });
-  const env = { ...process.env, SSH_ASKPASS: askpass, SSH_ASKPASS_REQUIRE: "force" };
-  const command =
-    "mkdir -p ~/.ssh && chmod 700 ~/.ssh && " +
-    `printf '%s\\n' ${shellQuote(publicKey)} >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys`;
-  const deadline = Date.now() + PROVISION_DEADLINE_MS;
-  try {
-    while (true) {
-      try {
-        await exec("ssh", [
-          ...BASE_SSH_OPTIONS,
-          "-o", "PreferredAuthentications=password",
-          "-o", "PubkeyAuthentication=no",
-          "-o", "NumberOfPasswordPrompts=1",
-          "-o", "ConnectTimeout=5",
-          `${SSH_USER}@${ip}`,
-          command,
-        ], { env, timeout: PROVISION_SSH_TIMEOUT_MS });
-        return;
-      } catch (error) {
-        if (Date.now() >= deadline) {
-          const detail = (error.stderr || "").toString().trim() || error.message;
-          throw new Error(`could not install the Cider SSH key in the base VM as ${SSH_USER}: ${detail}`);
-        }
-        await new Promise((resolve) => setTimeout(resolve, 2_000));
-      }
-    }
-  } finally {
-    await rm(dir, { recursive: true, force: true });
+async function ensureBaseImageId() {
+  const markerPath = join(CIDER_HOME, `${IMAGE_NAME}.image-id`);
+  if (await pathExists(markerPath)) {
+    const imageId = (await readFile(markerPath, "utf8")).trim();
+    if (/^[0-9a-f]{64}$/.test(imageId)) return markerPath;
   }
-}
-
-async function provisionImage(image, publicKey) {
-  process.stdout.write("Provisioning the Cider image with the node SSH key. This boots the base VM once.\n");
-  const env = { ...process.env, TART_HOME: image.tartHome };
-  const vm = spawn("tart", ["run", "--no-graphics", IMAGE_NAME], { env, stdio: "ignore" });
-  const vmExited = new Promise((resolve) => {
-    vm.once("exit", resolve);
-    vm.once("error", resolve);
-  });
-  try {
-    const ip = (await exec("tart", ["ip", IMAGE_NAME, "--wait", "120"], { env })).stdout.trim();
-    await installAuthorizedKey(ip, publicKey);
-    await exec("ssh", [
-      "-i", SSH_KEY_PATH,
-      "-o", "BatchMode=yes",
-      "-o", "IdentitiesOnly=yes",
-      ...BASE_SSH_OPTIONS,
-      `${SSH_USER}@${ip}`,
-      "true",
-    ], { timeout: PROVISION_SSH_TIMEOUT_MS });
-    process.stdout.write("Verified key-based SSH access to the base VM.\n");
-  } finally {
-    await exec("tart", ["stop", IMAGE_NAME, "--timeout", "30"], { env }).catch(() => vm.kill("SIGKILL"));
-    await vmExited;
-  }
-}
-
-async function ensureProvisionedImage(image, publicKey) {
-  const markerPath = join(CIDER_HOME, "images", `${IMAGE_NAME}.provisioned`);
-  if (await pathExists(markerPath) && await readFile(markerPath, "utf8") === publicKey) return;
-  await provisionImage(image, publicKey);
-  await mkdir(dirname(markerPath), { recursive: true });
-  await writeFile(markerPath, publicKey);
+  process.stdout.write("Identifying the Cider base image for portable snapshots...\n");
+  const hash = createHash("sha256");
+  const disk = createReadStream(join(VM_STORAGE, IMAGE_NAME, "disk.img"));
+  for await (const chunk of disk) hash.update(chunk);
+  await writeFile(markerPath, `${hash.digest("hex")}\n`);
+  return markerPath;
 }
 
 // Enrolling is idempotent per organization and name: the backend reactivates an offline
@@ -186,15 +141,22 @@ async function enrollment(config, name) {
   return state;
 }
 
-async function startNodeService(command, image) {
+async function startNodeService(command, config, node, baseImageIdPath, imageReference) {
+  const password = process.env.CIDER_SSH_PASSWORD
+    || (imageReference === DEFAULT_IMAGE ? "lume" : null);
   const child = spawn(command, [], {
     env: {
       ...process.env,
       CIDER_BASE_VM: IMAGE_NAME,
+      CIDER_BASE_IMAGE_ID_PATH: baseImageIdPath,
+      CIDER_API_URL: config.apiUrl,
+      CIDER_NODE_ID: node.id,
+      CIDER_NODE_TOKEN: node.token,
       CIDER_NODE_PORT: "8001",
       CIDER_SSH_KEY: SSH_KEY_PATH,
       CIDER_SSH_USER: SSH_USER,
-      TART_HOME: image.tartHome,
+      CIDER_VM_STORAGE: VM_STORAGE,
+      ...(password ? { CIDER_SSH_PASSWORD: password } : {}),
     },
     stdio: ["ignore", "inherit", "inherit"],
   });
@@ -254,14 +216,14 @@ async function stopNodeService(child) {
 
 export async function connect(options) {
   const config = await authenticatedConfig();
-  const imageRef = options.image || process.env.CIDER_IMAGE_REF || DEFAULT_IMAGE_REF;
-  const publicKey = await ensureSshKey();
-  const image = await ensureImage({ assumeYes: options.yes, imageRef });
-  await ensureProvisionedImage(image, publicKey);
+  const image = options.image || process.env.CIDER_IMAGE || DEFAULT_IMAGE;
+  await ensureSshKey();
+  const imageReference = await ensureImage({ assumeYes: options.yes, image });
+  const baseImageIdPath = await ensureBaseImageId();
   const node = await enrollment(config, options.name);
-  process.stdout.write(`Image ready: ${image.imagePath}\n`);
+  process.stdout.write(`Base VM ready: ${join(VM_STORAGE, IMAGE_NAME)}\n`);
   const nodeCommand = options.nodeCommand || process.env.CIDER_NODE_COMMAND || "cider-node";
-  const service = await startNodeService(nodeCommand, image);
+  const service = await startNodeService(nodeCommand, config, node, baseImageIdPath, imageReference);
   try {
     await holdConnection(config, node);
   } finally {

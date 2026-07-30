@@ -7,7 +7,7 @@ from dataclasses import dataclass, field
 from fastapi import WebSocket, status
 
 CHUNK_SIZE = 256 * 1024
-REQUEST_TIMEOUT_SECONDS = 300
+REQUEST_TIMEOUT_SECONDS = 1800
 
 
 class NodeUnavailableError(RuntimeError):
@@ -36,9 +36,17 @@ class NodeConnection:
     pending: dict[str, PendingRequest] = field(default_factory=dict)
 
 
+@dataclass
+class SshTunnel:
+    node_id: str
+    socket: asyncio.Future[WebSocket]
+    done: asyncio.Event = field(default_factory=asyncio.Event)
+
+
 class NodeGateway:
     def __init__(self) -> None:
         self._connections: dict[str, NodeConnection] = {}
+        self._ssh_tunnels: dict[str, SshTunnel] = {}
         self._lock = asyncio.Lock()
 
     async def add(self, node_id: str, websocket: WebSocket) -> NodeConnection:
@@ -62,6 +70,7 @@ class NodeGateway:
             if self._connections.get(node_id) is connection:
                 self._connections.pop(node_id)
         self._fail_pending(connection, NodeUnavailableError("node disconnected"))
+        self._fail_ssh_tunnels(node_id, NodeUnavailableError("node disconnected"))
 
     def is_connected(self, node_id: str) -> bool:
         return node_id in self._connections
@@ -71,6 +80,7 @@ class NodeGateway:
             connection = self._connections.pop(node_id, None)
         if connection is not None:
             self._fail_pending(connection, NodeUnavailableError("node revoked"))
+            self._fail_ssh_tunnels(node_id, NodeUnavailableError("node revoked"))
             with contextlib.suppress(RuntimeError):
                 await connection.websocket.close(
                     code=status.WS_1008_POLICY_VIOLATION,
@@ -88,6 +98,69 @@ class NodeGateway:
                     code=status.WS_1012_SERVICE_RESTART,
                     reason="service restarting",
                 )
+        for tunnel in self._ssh_tunnels.values():
+            if not tunnel.socket.done():
+                tunnel.socket.set_exception(
+                    NodeUnavailableError("service restarting")
+                )
+            tunnel.done.set()
+        self._ssh_tunnels.clear()
+
+    async def begin_ssh(self, node_id: str, sandbox_id: str) -> tuple[str, SshTunnel]:
+        connection = self._connections.get(node_id)
+        if connection is None:
+            raise NodeUnavailableError("node is not connected")
+        tunnel_id = uuid.uuid4().hex
+        tunnel = SshTunnel(
+            node_id=node_id,
+            socket=asyncio.get_running_loop().create_future(),
+        )
+        self._ssh_tunnels[tunnel_id] = tunnel
+        try:
+            async with connection.send_lock:
+                await connection.websocket.send_json(
+                    {
+                        "type": "ssh_open",
+                        "id": tunnel_id,
+                        "sandbox_id": sandbox_id,
+                    }
+                )
+        except RuntimeError as error:
+            self._ssh_tunnels.pop(tunnel_id, None)
+            raise NodeUnavailableError("node connection failed") from error
+        return tunnel_id, tunnel
+
+    async def wait_for_ssh(self, tunnel: SshTunnel) -> WebSocket:
+        try:
+            return await asyncio.wait_for(tunnel.socket, timeout=30)
+        except TimeoutError as error:
+            raise NodeUnavailableError("node SSH tunnel timed out") from error
+
+    async def attach_ssh(
+        self,
+        node_id: str,
+        tunnel_id: str,
+        websocket: WebSocket,
+    ) -> None:
+        tunnel = self._ssh_tunnels.get(tunnel_id)
+        if tunnel is None or tunnel.node_id != node_id or tunnel.socket.done():
+            await websocket.close(
+                code=status.WS_1008_POLICY_VIOLATION,
+                reason="invalid SSH tunnel",
+            )
+            return
+        await websocket.accept()
+        tunnel.socket.set_result(websocket)
+        await tunnel.done.wait()
+
+    async def finish_ssh(self, tunnel_id: str, tunnel: SshTunnel) -> None:
+        if self._ssh_tunnels.get(tunnel_id) is tunnel:
+            self._ssh_tunnels.pop(tunnel_id)
+        tunnel.done.set()
+        if tunnel.socket.done() and not tunnel.socket.cancelled():
+            with contextlib.suppress(NodeUnavailableError, RuntimeError):
+                socket = tunnel.socket.result()
+                await socket.close(code=status.WS_1000_NORMAL_CLOSURE)
 
     async def request(
         self,
@@ -131,6 +204,15 @@ class NodeGateway:
         if message_type == "heartbeat":
             async with connection.send_lock:
                 await connection.websocket.send_json({"type": "heartbeat_ack"})
+            return
+        if message_type == "ssh_error":
+            tunnel = self._ssh_tunnels.get(str(message.get("id")))
+            if tunnel is not None and not tunnel.socket.done():
+                tunnel.socket.set_exception(
+                    NodeUnavailableError(
+                        str(message.get("detail") or "node could not open SSH")
+                    )
+                )
             return
         if message_type != "response":
             raise ValueError("unsupported control message")
@@ -182,6 +264,14 @@ class NodeGateway:
         for pending in connection.pending.values():
             if not pending.future.done():
                 pending.future.set_exception(error)
+
+    def _fail_ssh_tunnels(self, node_id: str, error: Exception) -> None:
+        for tunnel in self._ssh_tunnels.values():
+            if tunnel.node_id != node_id:
+                continue
+            if not tunnel.socket.done():
+                tunnel.socket.set_exception(error)
+            tunnel.done.set()
 
 
 node_gateway = NodeGateway()

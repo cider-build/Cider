@@ -8,7 +8,7 @@ from sqlmodel import Session, select
 
 from ..auth import AuthContext, clear_session_cookie, create_session, current_auth_context, hash_token, ph, utc_now
 from ..config import settings
-from ..db import get_session
+from ..db import session_dependency
 from ..models import ApiToken, AuthSession, LocalCredential, Organization, OrganizationMembership, User, UserIdentity
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -48,7 +48,7 @@ def auth_out(user: User, org: Organization) -> AuthOut:
 
 
 @router.post("/signup", status_code=201)
-def signup(body: SignupInput, response: Response, db: Session = Depends(get_session)) -> AuthOut:
+def signup(body: SignupInput, response: Response, db: Session = Depends(session_dependency)) -> AuthOut:
     # For now, signing up will sign up for both user and org at same time no matter what, later we'll add seperation
     email = body.email.lower()
     if db.exec(select(User).where(User.email == email)).first():
@@ -69,7 +69,7 @@ def signup(body: SignupInput, response: Response, db: Session = Depends(get_sess
 
 
 @router.post("/login")
-def login(body: AuthInput, response: Response, db: Session = Depends(get_session)) -> AuthOut:
+def login(body: AuthInput, response: Response, db: Session = Depends(session_dependency)) -> AuthOut:
     email = body.email.lower()
     user = db.exec(select(User).where(User.email == email)).first()
     credential = db.get(LocalCredential, user.id) if user else None
@@ -95,7 +95,7 @@ def login(body: AuthInput, response: Response, db: Session = Depends(get_session
 
 
 @router.post("/cli/login")
-def cli_login(body: AuthInput, db: Session = Depends(get_session)) -> CliAuthOut:
+def cli_login(body: AuthInput, db: Session = Depends(session_dependency)) -> CliAuthOut:
     email = body.email.lower()
     user = db.exec(select(User).where(User.email == email)).first()
     credential = db.get(LocalCredential, user.id) if user else None
@@ -128,7 +128,7 @@ def cli_login(body: AuthInput, db: Session = Depends(get_session)) -> CliAuthOut
 def logout(
     response: Response,
     cider_session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
-    db: Session = Depends(get_session),
+    db: Session = Depends(session_dependency),
 ) -> None:
     if cider_session:
         session = db.exec(select(AuthSession).where(AuthSession.token_hash == hash_token(cider_session))).first()
@@ -139,7 +139,7 @@ def logout(
 
 
 @router.get("/me")
-def me(ctx: AuthContext = Depends(current_auth_context), db: Session = Depends(get_session)) -> AuthOut:
+def me(ctx: AuthContext = Depends(current_auth_context), db: Session = Depends(session_dependency)) -> AuthOut:
     org = db.get(Organization, ctx.membership.organization_id)
     if org is None:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid account")

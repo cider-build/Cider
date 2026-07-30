@@ -45,7 +45,7 @@ async def connect_node(websocket: WebSocket, node_id: str) -> None:
     await websocket.accept()
     connection = await node_gateway.add(node_id, websocket)
 
-    await warm_pool.ensure_node_has_warm_sandboxes(node)
+    await warm_pool.ensure_node_has_warm_sandboxes(node.id)
     try:
         while True:
             message = await asyncio.wait_for(websocket.receive(), timeout=LIVENESS_TIMEOUT_SECONDS)
