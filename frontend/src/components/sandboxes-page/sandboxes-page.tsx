@@ -27,23 +27,26 @@ function SandboxRow({ sandbox }: { sandbox: Sandbox }) {
 export function SandboxesPage() {
   const sandboxes = useQuery({ queryKey: ["sandboxes"], queryFn: listSandboxes });
 
-  if (sandboxes.status === "pending") return "Loading...";
-  if (sandboxes.error) return <p className={styles.error}>{sandboxes.error.message}</p>;
-
   return (
     <section className={styles.page}>
       <PageHeader title="Sandboxes" />
-      <div className={styles.container}>
-        <div className={styles.tableHeader}>
-          <span>Sandbox</span>
-          <span>Node</span>
-          <span>Status</span>
-          <span>Created</span>
+      {sandboxes.status === "pending" ? (
+        "Loading..."
+      ) : sandboxes.error ? (
+        <p className={styles.error}>{sandboxes.error.message}</p>
+      ) : (
+        <div className={styles.container}>
+          <div className={styles.tableHeader}>
+            <span>Sandbox</span>
+            <span>Node</span>
+            <span>Status</span>
+            <span>Created</span>
+          </div>
+          <div className={styles.rows}>
+            {sandboxes.data.map((sandbox) => <SandboxRow key={sandbox.id} sandbox={sandbox} />)}
+          </div>
         </div>
-        <div className={styles.rows}>
-          {sandboxes.data.map((sandbox) => <SandboxRow key={sandbox.id} sandbox={sandbox} />)}
-        </div>
-      </div>
+      )}
     </section>
   );
 }

@@ -1,6 +1,7 @@
 .page {
   display: grid;
-  grid-template-rows: auto 1fr;
+  gap: 22px;
+  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
 }
 

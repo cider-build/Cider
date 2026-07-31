@@ -31,21 +31,22 @@
   margin-top: 34px;
 }
 
-.nav button {
+.nav a {
   background: transparent;
   border: 0;
   color: #8a8a8a;
   cursor: pointer;
   font-weight: 600;
   padding: 8px 0;
+  text-decoration: none;
   text-align: left;
 }
 
-.nav button:hover {
+.nav a:hover {
   color: #3f3f3f;
 }
 
-.nav button[data-active="true"] {
+.nav a.active {
   color: #171717;
 }
 
