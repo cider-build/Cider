@@ -65,6 +65,25 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> dict:
             os.unlink(archive_path)
 
 
+@app.post("/sandboxes/{sandbox_id}/upload", status_code=204)
+async def upload_sandbox(sandbox_id: str, archive: UploadFile = File(...)) -> None:
+    archive_path = None
+    async with vm_lock(sandbox_id):
+        try:
+            if await lume.find(sandbox_id) is None:
+                raise HTTPException(404, "sandbox not found")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".tgz") as file:
+                archive_path = file.name
+                while chunk := await archive.read(1024 * 1024):
+                    file.write(chunk)
+            await lume.upload(sandbox_id, archive_path)
+        except RuntimeError as e:
+            raise HTTPException(500, str(e))
+        finally:
+            if archive_path is not None:
+                os.unlink(archive_path)
+
+
 @app.post("/sandboxes/{sandbox_id}/snapshots", status_code=201)
 async def snapshot_sandbox(sandbox_id: str, body: SnapshotInput) -> dict:
     async with vm_lock(sandbox_id):

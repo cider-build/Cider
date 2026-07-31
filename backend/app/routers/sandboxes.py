@@ -99,23 +99,51 @@ async def create_sandbox(
                     node_id,
                 )
             else:
-                node = warm_pool.require_available_node(
+                archive_bytes = await archive.read()
+                config = extract_launch_config(archive_bytes)
+                node, sandbox = warm_pool.reserve_archive_sandbox(
                     db,
                     ctx.membership.organization_id,
                     node_id,
                 )
-                archive_bytes = await archive.read()
-                config = extract_launch_config(archive_bytes)
-                response = await node_transport.request(
-                    node,
-                    "POST",
-                    "/sandboxes",
-                    files={"archive": (archive.filename, archive_bytes, archive.content_type)},
-                )
-                sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=ctx.membership.organization_id, launch_config=config, status=status)
-                db.add(sandbox)
-                db.commit()
-                db.refresh(sandbox)
+                if sandbox is None:
+                    response = await node_transport.request(
+                        node,
+                        "POST",
+                        "/sandboxes",
+                        files={"archive": (archive.filename, archive_bytes, archive.content_type)},
+                    )
+                    sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=ctx.membership.organization_id, launch_config=config, status=status)
+                    db.add(sandbox)
+                    db.commit()
+                    db.refresh(sandbox)
+                else:
+                    try:
+                        await node_transport.request(
+                            node,
+                            "POST",
+                            f"/sandboxes/{sandbox.id}/upload",
+                            files={"archive": (archive.filename, archive_bytes, archive.content_type)},
+                        )
+                    except HTTPException as error:
+                        try:
+                            await node_transport.request(node, "DELETE", f"/sandboxes/{sandbox.id}")
+                        except HTTPException as cleanup_error:
+                            raise HTTPException(
+                                500,
+                                f"warm sandbox upload failed: {error.detail}; cleanup also failed: {cleanup_error.detail}",
+                            ) from error
+                        sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                        db.add(sandbox)
+                        db.commit()
+                        await warm_pool.ensure_node_has_warm_sandboxes(node.id)
+                        raise
+                    sandbox.status = status
+                    sandbox.launch_config = config
+                    db.add(sandbox)
+                    db.commit()
+                    db.refresh(sandbox)
+                    await warm_pool.ensure_node_has_warm_sandboxes(node.id)
         except ValueError as e:
             raise HTTPException(422, str(e))
 

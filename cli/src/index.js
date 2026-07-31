@@ -39,14 +39,21 @@ async function gitFiles(dir) {
   }
 }
 
-async function archivePath(path) {
+async function gitFilesIncludingIgnored(dir) {
+  const { stdout } = await exec("git", ["-C", dir, "ls-files", "-z", "--cached", "--modified", "--others", "--", "."], { encoding: "buffer", maxBuffer: 1024 * 1024 * 100 });
+  return stdout.toString("utf8").split("\0").filter(Boolean);
+}
+
+async function archivePath(path, includeIgnored = false) {
   const dir = resolve(path);
   const parent = dirname(dir);
   const root = basename(dir);
   const tmp = await mkdtemp(join(tmpdir(), "cider-"));
   const file = join(tmp, "repo.tgz");
   try {
-    const files = await gitFiles(dir);
+    const files = includeIgnored
+      ? await gitFilesIncludingIgnored(dir)
+      : await gitFiles(dir);
     await tar.c(
       { cwd: parent, file, gzip: true, portable: true },
       files ? files.map((path) => `${root}/${path}`) : [root],
@@ -95,8 +102,9 @@ export async function run(argv) {
   program
     .command("open [path]")
     .description("Create a sandbox from a local Git worktree")
-    .action(async (path = ".") => {
-      const archive = await archivePath(path);
+    .option("--include-ignored", "Include Git-ignored files in the upload")
+    .action(async (path = ".", options = {}) => {
+      const archive = await archivePath(path, Boolean(options.includeIgnored));
       try {
         const sandbox = await client().createSandbox(archive.file);
         process.stdout.write(`${sandbox.id}\n`);

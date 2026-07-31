@@ -41,6 +41,35 @@ def require_available_node(db, org_id: str, node_id: str | None = None):
     raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
 
 
+def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None):
+    nodes = available_nodes(db, org_id, node_id)
+    if not nodes:
+        if node_id is not None:
+            raise HTTPException(404, "node not found or not connected")
+        raise HTTPException(404, "no nodes registered")
+    for node in nodes:
+        warm = db.exec(
+            select(Sandbox).where(
+                Sandbox.node_id == node.id,
+                Sandbox.deleted_at.is_(None),
+                Sandbox.status == "warm",
+                Sandbox.org_id.is_(None),
+            )
+        ).first()
+        if warm is not None:
+            warm.status = "provisioning"
+            warm.org_id = org_id
+            warm.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.add(warm)
+            db.commit()
+            db.refresh(warm)
+            return node, warm
+    for node in nodes:
+        if node_has_vm_capacity(db, node):
+            return node, None
+    raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
+
+
 async def ensure_node_has_warm_sandboxes(node_id: str):
     with get_session() as db:
         sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
