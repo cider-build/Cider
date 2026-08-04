@@ -64,6 +64,11 @@ export function makeClient(config) {
       method: "POST",
       form: await sandboxForm(archivePath, nodeId),
     }),
+    pauseSandbox: (id) => request(config, `/sandboxes/${id}/pause`, { method: "POST" }),
+    resumeSandbox: (id, nodeId) => request(config, `/sandboxes/${id}/resume`, {
+      method: "POST",
+      body: nodeId ? { node_id: nodeId } : {},
+    }),
     executeSandbox: (id, command) => request(config, `/sandboxes/${id}/execute`, {
       method: "POST",
       body: { command },

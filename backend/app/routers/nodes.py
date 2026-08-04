@@ -271,7 +271,7 @@ async def delete_node(node_id: str, ctx: AuthContext = Depends(current_auth_cont
 
         sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
         if node_gateway.is_connected(node_id) and any(
-            sandbox.org_id is not None and sandbox.status != "stopped"
+            sandbox.org_id is not None and sandbox.status not in ("stopped", "paused")
             for sandbox in sandboxes
         ):
             raise HTTPException(409, "node has active sandboxes; delete them first")
@@ -281,7 +281,8 @@ async def delete_node(node_id: str, ctx: AuthContext = Depends(current_auth_cont
         # Other sandboxes remain node-local and become unreachable with the node.
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         for sandbox in sandboxes:
-            if sandbox.status == "stopped":
+            # stopped and paused state lives in Cider storage; it survives the node.
+            if sandbox.status in ("stopped", "paused"):
                 continue
             sandbox.deleted_at = now
             db.add(sandbox)

@@ -9,7 +9,7 @@ import * as tar from "tar";
 import { makeClient } from "./lib/api.js";
 import { readConfig } from "./lib/config.js";
 import { connect } from "./lib/connect.js";
-import { ssh } from "./lib/ssh.js";
+import { resolveNode, ssh } from "./lib/ssh.js";
 
 function printRows(rows, columns) {
   if (rows.length === 0) return;
@@ -138,6 +138,25 @@ export async function run(argv) {
     .action(async () => {
       const sandbox = await client().createSandbox(undefined);
       process.stdout.write(`${sandbox.id}\n`);
+    });
+
+  sandboxes
+    .command("pause <id>")
+    .description("Snapshot a sandbox to Cider storage and free its VM slot")
+    .action(async (id) => {
+      const sandbox = await client().pauseSandbox(id);
+      process.stdout.write(`${sandbox.id} paused\n`);
+    });
+
+  sandboxes
+    .command("resume <id>")
+    .description("Restore a paused sandbox onto any node with a free slot")
+    .option("--node <node>", "Destination node")
+    .action(async (id, options) => {
+      let nodeId;
+      if (options.node) nodeId = (await resolveNode(client(), options.node)).id;
+      const sandbox = await client().resumeSandbox(id, nodeId);
+      process.stdout.write(`${sandbox.id} resumed on ${sandbox.node_id}\n`);
     });
 
   sandboxes

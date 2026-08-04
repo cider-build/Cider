@@ -105,7 +105,7 @@ function runSsh(config, target) {
 }
 
 
-async function resolveNode(client, selector) {
+export async function resolveNode(client, selector) {
   const nodes = await client.listNodes();
   const node = nodes.find(
     (candidate) => candidate.id === selector || candidate.name === selector,
