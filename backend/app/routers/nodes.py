@@ -11,7 +11,7 @@ from sqlmodel import select
 
 from ..auth import AuthContext, current_auth_context, hash_token
 from ..db import get_session
-from ..models import Node, NodeCredential, Sandbox
+from ..models import Node, NodeCredential, Sandbox, Server
 from ..services import warm_pool
 from ..services.node_gateway import node_gateway
 
@@ -268,6 +268,11 @@ async def delete_node(node_id: str, ctx: AuthContext = Depends(current_auth_cont
         credential = db.get(NodeCredential, node_id)
         if node is None or node.org_id != ctx.membership.organization_id or credential is None:
             raise HTTPException(404, "node not found")
+
+        servers = db.exec(select(Server).where(Server.node_id == node_id, Server.deleted_at.is_(None))).all()
+        if servers:
+            # A server's disk lives on this node; removing the node would strand it.
+            raise HTTPException(409, "node has servers; delete them first")
 
         sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
         if node_gateway.is_connected(node_id) and any(
