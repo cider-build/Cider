@@ -1,0 +1,77 @@
+/* Snapshots list, ported from prototype L's #snapshots page. */
+
+.page {
+  max-width: 1240px;
+}
+
+.quiet {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.error {
+  color: #b42318;
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+/* L's .cols-snap without the Size column (the API has no size field). */
+.cols {
+  grid-template-columns: minmax(110px, 1fr) minmax(130px, 1.1fr) minmax(64px, 90px) minmax(110px, 150px) 34px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
+.acts {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+/* L's .btn-ic: quiet 28px square icon button with the press-in mechanic. */
+.btnIc {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  box-shadow: 2px 2px 0 0 #ececec;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 130ms var(--ease), box-shadow 130ms var(--ease), color 130ms var(--ease), transform 130ms var(--ease), opacity 130ms var(--ease);
+  width: 28px;
+}
+
+.btnIc:hover:not(:disabled) {
+  border-color: var(--faint);
+  box-shadow: 1px 1px 0 0 #ececec;
+  color: var(--ink);
+  transform: translate(1px, 1px);
+}
+
+.btnIc:active:not(:disabled) {
+  box-shadow: 0 0 0 0 #ececec;
+  transform: translate(2px, 2px);
+}
+
+.btnIc:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.btnIc svg {
+  display: block;
+}
+
+.danger:hover:not(:disabled) {
+  border-color: #e2aaa4;
+  color: #b42318;
+}

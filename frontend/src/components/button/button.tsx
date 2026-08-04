@@ -3,6 +3,7 @@ import styles from "./button.module.css";
 
 enum ButtonStyle {
   OrangeOffset = "orangeOffset",
+  Primary = "primary",
 }
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & { children: ReactNode; styleType: ButtonStyle };
@@ -14,6 +15,8 @@ export const Button = Object.assign(
     switch (styleType) {
       case ButtonStyle.OrangeOffset:
         return <button className={styles.orangeOffset} {...props}>{children}</button>;
+      case ButtonStyle.Primary:
+        return <button className={styles.primary} {...props}>{children}</button>;
     }
   },
   { Style: ButtonStyle },

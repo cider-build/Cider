@@ -1,107 +1,103 @@
-.page {
-  display: grid;
-  gap: 22px;
-  grid-template-rows: auto minmax(0, 1fr);
-  height: 100%;
+/* Nodes list, ported from prototype app-l.html (#nodes). Row/panel/rail
+   primitives live in list-page; this module only adds the page's column
+   template and page-local pieces. */
+
+/* Doubled selector so this beats list-page's .lrow gap regardless of module
+   emit order. Template measured from app-l's .cols-nodes, minus the VMs
+   column (no real per-node usage data yet). */
+.colsNodes.colsNodes {
+  gap: 13px;
+  grid-template-columns: minmax(120px, 1.1fr) 70px 46px 40px 56px minmax(128px, 1fr) 88px 16px;
 }
 
-.empty {
+/* L's a.lrow: the whole row is the link. */
+.linkRow {
+  color: inherit;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.linkRow:active {
+  transform: scale(0.995);
+}
+
+.linkRow > :first-child {
+  transition: transform 150ms var(--ease);
+}
+
+.linkRow:hover > :first-child {
+  transform: translateX(1px);
+}
+
+.chev {
+  color: var(--faint);
+  font-size: 16px;
+  text-align: right;
+  transition: color 130ms var(--ease), transform 150ms var(--ease);
+}
+
+.linkRow:hover .chev {
+  color: var(--ink);
+  transform: translateX(2px);
+}
+
+/* L's .sb-toolbar / .sb-search treatment, reused for the node search. */
+.toolbar {
   align-items: center;
-  border: 1px dashed #cfcfcf;
-  border-radius: 10px;
-  color: #8a8a8a;
+  border-bottom: 1px solid var(--line);
   display: flex;
-  font-size: 18px;
-  justify-content: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 20px;
 }
 
-
-.container {
-  border: 1px solid #d4d4d4;
-  border-radius: 12px;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  overflow: hidden;
-  transition: opacity 120ms ease;
+.search {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease), transform 150ms var(--ease);
+  width: 250px;
 }
 
-.container[data-fetching="true"] {
+.search::placeholder {
+  color: var(--faint);
+}
+
+.search:focus {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 0 #dcdcdc;
+  outline: none;
+  transform: translate(-1px, -1px);
+}
+
+.kbd {
+  background: #f1f1f1;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 6px;
+}
+
+.fade {
+  transition: opacity 120ms var(--ease);
+}
+
+.fade[data-fetching="true"] {
   opacity: 0.72;
-}
-
-.containerHeader {
-  align-items: center;
-  border-bottom: 1px solid #d4d4d4;
-  display: flex;
-  font-weight: 700;
-  gap: 16px;
-  justify-content: space-between;
-  padding: 16px 18px;
-}
-
-.containerHeader input {
-  max-width: 260px;
-}
-
-.pagination {
-  align-items: center;
-  display: flex;
-  gap: 10px;
-}
-
-.pagination button {
-  align-items: center;
-  background: transparent;
-  border: 0;
-  color: #171717;
-  cursor: pointer;
-  display: flex;
-  height: 28px;
-  justify-content: center;
-  padding: 0;
-  width: 28px;
-}
-
-
-.pagination button:disabled {
-  color: #cfcfcf;
-  cursor: default;
-}
-
-.list {
-  align-content: start;
-  display: grid;
-}
-
-.item {
-  align-items: center;
-  border-bottom: 1px solid #eeeeee;
-  display: flex;
-  justify-content: space-between;
-  padding: 14px 18px;
-}
-
-.item div {
-  display: grid;
-  gap: 3px;
-}
-
-.item span {
-  color: #737373;
-  font-size: 14px;
-}
-
-.item button {
-  background: transparent;
-  border: 0;
-  cursor: pointer;
-  font-size: 24px;
-  line-height: 1;
-  padding: 0 6px;
 }
 
 .error {
   color: #b42318;
+  font-size: 13px;
   margin: 0;
   white-space: pre-wrap;
+}
+
+@media (max-width: 1360px) {
+  .colsNodes.colsNodes {
+    gap: 11px;
+  }
 }
