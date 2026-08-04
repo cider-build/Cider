@@ -83,12 +83,11 @@ async def list_sandboxes(ctx: AuthContext = Depends(current_auth_context)) -> li
 @router.post("", status_code=201)
 async def create_sandbox(
     archive: UploadFile | None = File(None),
-    persistent: bool = Form(False),
     node_id: str | None = Form(None),
     ctx: AuthContext = Depends(current_auth_context),
 ) -> Sandbox:
     config = None
-    status = "persistent" if persistent else "active"
+    status = "active"
 
     with get_session() as db:
         try:
@@ -159,9 +158,8 @@ async def snapshot_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_a
         sandbox = db.get(Sandbox, sandbox_id)
         if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
             raise HTTPException(404, "sandbox not found")
-        # Automatic TTL cleanup makes ephemeral sandboxes unsuitable for durable snapshots.
-        if sandbox.status != "persistent":
-            raise HTTPException(409, "snapshots require a persistent sandbox")
+        if sandbox.status != "active":
+            raise HTTPException(409, "snapshots require a running sandbox")
 
         node = db.get(Node, sandbox.node_id)
         if node is None:

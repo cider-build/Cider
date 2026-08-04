@@ -32,7 +32,7 @@ def available_ssh_targets(org_id: str) -> list[SshTarget]:
             .where(
                 Sandbox.org_id == org_id,
                 Sandbox.deleted_at.is_(None),
-                Sandbox.status.in_(("active", "persistent")),
+                Sandbox.status == "active",
             )
             .order_by(Sandbox.created_at.desc())
         ).all()
@@ -95,7 +95,7 @@ async def user_ssh(websocket: WebSocket, sandbox_id: str) -> None:
                 sandbox is None
                 or sandbox.org_id != ctx.membership.organization_id
                 or sandbox.deleted_at is not None
-                or sandbox.status not in ("active", "persistent")
+                or sandbox.status != "active"
             ):
                 raise HTTPException(404, "available sandbox not found")
             node = db.get(Node, sandbox.node_id)

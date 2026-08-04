@@ -146,10 +146,7 @@ export async function ssh(config, sandboxId, options) {
     if (typeof options.new === "string") {
       nodeId = (await resolveNode(client, options.new)).id;
     }
-    const sandbox = await client.createSandbox(undefined, {
-      persistent: true,
-      nodeId,
-    });
+    const sandbox = await client.createSandbox(undefined, { nodeId });
     process.stdout.write(`${sandbox.id}\n`);
     sandboxId = sandbox.id;
   }

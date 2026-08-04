@@ -101,7 +101,9 @@ async def restore_snapshot(
             db.commit()
             raise
 
-        sandbox.status = "persistent"
+        # A restored sandbox is a fresh ephemeral one: restart its TTL clock.
+        sandbox.status = "active"
+        sandbox.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
         try:
             db.add(sandbox)
             db.commit()

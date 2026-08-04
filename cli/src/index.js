@@ -134,9 +134,9 @@ export async function run(argv) {
 
   sandboxes
     .command("create")
-    .description("Create a persistent blank sandbox VM")
+    .description("Create a blank sandbox VM")
     .action(async () => {
-      const sandbox = await client().createSandbox(undefined, { persistent: true });
+      const sandbox = await client().createSandbox(undefined);
       process.stdout.write(`${sandbox.id}\n`);
     });
 

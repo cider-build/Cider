@@ -23,12 +23,11 @@ async function request(config, path, options = {}) {
   return response.status === 204 ? null : response.json();
 }
 
-async function sandboxForm(archivePath, persistent, nodeId) {
+async function sandboxForm(archivePath, nodeId) {
   const form = new FormData();
   if (archivePath) {
     form.set("archive", new Blob([await readFile(archivePath)]), basename(archivePath));
   }
-  if (persistent) form.set("persistent", "true");
   if (nodeId) form.set("node_id", nodeId);
   return form;
 }
@@ -61,9 +60,9 @@ export function makeClient(config) {
       method: "POST",
       body: { sandbox_id: sandboxId },
     }),
-    createSandbox: async (archivePath, { persistent = false, nodeId } = {}) => request(config, "/sandboxes", {
+    createSandbox: async (archivePath, { nodeId } = {}) => request(config, "/sandboxes", {
       method: "POST",
-      form: await sandboxForm(archivePath, persistent, nodeId),
+      form: await sandboxForm(archivePath, nodeId),
     }),
     executeSandbox: (id, command) => request(config, `/sandboxes/${id}/execute`, {
       method: "POST",
