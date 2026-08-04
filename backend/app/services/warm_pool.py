@@ -7,11 +7,16 @@ from sqlmodel import select
 
 from ..config import settings
 from ..db import get_session
-from ..models import Node, Sandbox
+from ..models import Node, Sandbox, Server
 from . import node_transport
 from .node_gateway import node_gateway
 
 warming = defaultdict(int)
+
+
+def running_server_count(db, node_id: str) -> int:
+    servers = db.exec(select(Server).where(Server.node_id == node_id, Server.deleted_at.is_(None))).all()
+    return sum(server.status != "stopped" for server in servers)
 
 
 def available_nodes(db, org_id: str | None = None, node_id: str | None = None):
@@ -26,7 +31,7 @@ def available_nodes(db, org_id: str | None = None, node_id: str | None = None):
 def node_has_vm_capacity(db, node):
     sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node.id, Sandbox.deleted_at.is_(None))).all()
     local = sum(sandbox.status != "stopped" for sandbox in sandboxes)
-    return local + warming[node.id] < node.vm_count
+    return local + running_server_count(db, node.id) + warming[node.id] < node.vm_count
 
 
 def require_available_node(db, org_id: str, node_id: str | None = None):
@@ -70,10 +75,42 @@ def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None):
     raise HTTPException(429, "all nodes are at their configured VM capacity")
 
 
+def claim_vm_for_server(org_id: str, node_id: str | None = None):
+    """Pick a node and, when possible, hand over a warm sandbox's already-booted VM.
+
+    The claimed sandbox row is tombstoned — the VM lives on under the server's
+    ownership. Returns (node, vm_id | None); None means the caller must cold-create.
+    """
+    with get_session() as db:
+        nodes = available_nodes(db, org_id, node_id)
+        if not nodes:
+            if node_id is not None:
+                raise HTTPException(404, "node not found or not connected")
+            raise HTTPException(404, "no nodes registered")
+        for node in nodes:
+            warm = db.exec(
+                select(Sandbox).where(
+                    Sandbox.node_id == node.id,
+                    Sandbox.deleted_at.is_(None),
+                    Sandbox.status == "warm",
+                    Sandbox.org_id.is_(None),
+                )
+            ).first()
+            if warm is not None:
+                warm.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                db.add(warm)
+                db.commit()
+                return node, warm.id
+        for node in nodes:
+            if node_has_vm_capacity(db, node):
+                return node, None
+        raise HTTPException(429, "all nodes are at their configured VM capacity")
+
+
 async def ensure_node_has_warm_sandboxes(node_id: str):
     with get_session() as db:
         sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
-        allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes)
+        allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes) + running_server_count(db, node_id)
         warm = sum(sandbox.status == "warm" for sandbox in sandboxes)
         node = db.get(Node, node_id)
         if node is None:
@@ -96,7 +133,7 @@ async def reconcile_node_warm_pool(node_id: str) -> None:
                 Sandbox.deleted_at.is_(None),
             )
         ).all()
-        allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes)
+        allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes) + running_server_count(db, node_id)
         warm = [sandbox for sandbox in sandboxes if sandbox.status == "warm"]
         target = min(settings.warm_sandboxes_per_node, max(0, node.vm_count - allocated))
         extra = warm[target:]

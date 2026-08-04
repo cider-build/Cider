@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
 from .db import init_db
-from .routers import auth, node_connections, node_storage, nodes, sandboxes, snapshots, ssh, waitlist
+from .routers import auth, node_connections, node_storage, nodes, sandboxes, servers, snapshots, ssh, waitlist
 from .services.node_gateway import node_gateway
 
 init_db()
@@ -25,6 +25,7 @@ app.include_router(node_connections.router)
 app.include_router(node_storage.router)
 app.include_router(nodes.router)
 app.include_router(sandboxes.router)
+app.include_router(servers.router)
 app.include_router(snapshots.router)
 app.include_router(ssh.router)
 app.include_router(waitlist.router)

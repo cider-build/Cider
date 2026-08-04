@@ -26,6 +26,7 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+
 class ExecuteInput(BaseModel):
     command: str
 
@@ -63,6 +64,31 @@ async def create_sandbox(archive: UploadFile | None = File(None)) -> dict:
     finally:
         if archive_path is not None:
             os.unlink(archive_path)
+
+
+@app.post("/sandboxes/{sandbox_id}/stop", status_code=204)
+async def stop_sandbox(sandbox_id: str) -> None:
+    async with vm_lock(sandbox_id):
+        try:
+            if await lume.find(sandbox_id) is None:
+                raise HTTPException(404, "sandbox not found")
+            await lume.stop(sandbox_id)
+        except RuntimeError as e:
+            raise HTTPException(500, str(e))
+
+
+@app.post("/sandboxes/{sandbox_id}/start", status_code=204)
+async def start_sandbox(sandbox_id: str) -> None:
+    async with vm_lock(sandbox_id):
+        try:
+            vm = await lume.find(sandbox_id)
+            if vm is None:
+                raise HTTPException(404, "sandbox not found")
+            if vm["status"] == "running":
+                return
+            await lume.start(sandbox_id)
+        except RuntimeError as e:
+            raise HTTPException(500, str(e))
 
 
 @app.post("/sandboxes/{sandbox_id}/upload", status_code=204)
