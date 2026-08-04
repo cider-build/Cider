@@ -1,7 +1,9 @@
 from datetime import datetime, timedelta, timezone
 import io
-import json
+import re
 import tarfile
+
+import yaml
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
@@ -56,19 +58,49 @@ async def cleanup_expired_sandboxes() -> None:
         await warm_pool.ensure_node_has_warm_sandboxes(node_id)
 
 
+CONFIG_NAMES = ("cider.yaml", "cider.yml")
+
+
 def extract_launch_config(archive: bytes) -> dict | None:
+    found: dict[str, bytes] = {}
     with tarfile.open(fileobj=io.BytesIO(archive), mode="r:gz") as tar:
         for member in tar.getmembers():
             parts = member.name.removeprefix("./").split("/")
-            if len(parts) <= 2 and parts[-1] == "cider.json" and member.isfile():
+            if len(parts) <= 2 and parts[-1] in CONFIG_NAMES and member.isfile():
                 file = tar.extractfile(member)
-                if file is None:
-                    return None
-                config = json.load(file)
-                if not isinstance(config, dict):
-                    raise ValueError("cider.json must be a JSON object")
-                return config
+                if file is not None:
+                    found.setdefault(parts[-1], file.read())
+    for name in CONFIG_NAMES:
+        if name not in found:
+            continue
+        try:
+            config = yaml.safe_load(found[name])
+        except yaml.YAMLError as error:
+            raise ValueError(f"{name} could not be parsed: {error}") from error
+        if not isinstance(config, dict):
+            raise ValueError(f"{name} must be a mapping")
+        return config
     return None
+
+
+STORAGE_UNITS = {"kb": 1024, "mb": 1024**2, "gb": 1024**3, "tb": 1024**4}
+
+
+def min_storage_bytes(config: dict | None) -> int | None:
+    """resources.min_storage is a placement constraint: bytes, or "60GB"-style."""
+    if not config:
+        return None
+    resources = config.get("resources")
+    if not isinstance(resources, dict) or "min_storage" not in resources:
+        return None
+    value = resources["min_storage"]
+    if isinstance(value, int) and value > 0:
+        return value
+    if isinstance(value, str):
+        match = re.fullmatch(r"\s*([0-9]+(?:\.[0-9]+)?)\s*(kb|mb|gb|tb)\s*", value, re.IGNORECASE)
+        if match:
+            return int(float(match.group(1)) * STORAGE_UNITS[match.group(2).lower()])
+    raise ValueError('resources.min_storage must be bytes or a size like "60GB"')
 
 
 @router.get("")
@@ -107,6 +139,7 @@ async def create_sandbox(
                     db,
                     ctx.membership.organization_id,
                     node_id,
+                    min_storage=min_storage_bytes(config),
                 )
                 if sandbox is None:
                     response = await node_transport.request(
@@ -367,6 +400,15 @@ async def resume_sandbox(
         db.add(sandbox)
         db.commit()
         db.refresh(sandbox)
+        # The disk is back but the start process died with the old VM; relaunch
+        # it. Setup does not re-run — its effects live on the disk.
+        if sandbox.launch_config and sandbox.launch_config.get("start"):
+            await node_transport.request(
+                node,
+                "POST",
+                f"/sandboxes/{sandbox.id}/launch-config",
+                json={"start": sandbox.launch_config["start"]},
+            )
     discard_manifest(sandbox.org_id, pause_key(sandbox.id))
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
     return sandbox

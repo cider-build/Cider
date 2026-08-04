@@ -154,6 +154,7 @@ async def restore_snapshot(
         # A restored sandbox is a fresh ephemeral one: restart its TTL clock.
         sandbox.status = "active"
         sandbox.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        launch_config = snapshot.launch_config or sandbox.launch_config
         try:
             db.add(sandbox)
             db.commit()
@@ -167,6 +168,14 @@ async def restore_snapshot(
                 ) from error
             raise
         db.refresh(sandbox)
+        # The disk is back but the start process died with the source VM.
+        if launch_config and launch_config.get("start"):
+            await node_transport.request(
+                node,
+                "POST",
+                f"/sandboxes/{sandbox.id}/launch-config",
+                json={"start": launch_config["start"]},
+            )
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
     return sandbox
 

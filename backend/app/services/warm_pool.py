@@ -46,12 +46,17 @@ def require_available_node(db, org_id: str, node_id: str | None = None):
     raise HTTPException(429, "all nodes are at their configured VM capacity")
 
 
-def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None):
+def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None, min_storage: int | None = None):
     nodes = available_nodes(db, org_id, node_id)
     if not nodes:
         if node_id is not None:
             raise HTTPException(404, "node not found or not connected")
         raise HTTPException(404, "no nodes registered")
+    if min_storage is not None:
+        nodes = [node for node in nodes if node.sandbox_storage_bytes is not None and node.sandbox_storage_bytes >= min_storage]
+        if not nodes:
+            gigabytes = min_storage / 1024**3
+            raise HTTPException(422, f"no connected node offers {gigabytes:.0f} GB of storage per sandbox")
     for node in nodes:
         warm = db.exec(
             select(Sandbox).where(
