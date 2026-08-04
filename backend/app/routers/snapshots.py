@@ -9,7 +9,7 @@ from ..services import node_transport, warm_pool
 from ..services.node_gateway import node_gateway
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
-from ..snapshot_store import delete_manifest, read_manifest
+from ..snapshot_store import blob_path, delete_manifest, read_manifest
 
 router = APIRouter(prefix="/snapshots")
 
@@ -18,14 +18,64 @@ class RestoreInput(BaseModel):
     node_id: str | None = None
 
 
+class SnapshotOut(BaseModel):
+    id: str
+    source_sandbox_id: str
+    created_at: datetime
+    deleted_at: datetime | None
+    size_bytes: int | None
+
+
+def _collect_digests(value, digests: set[str]) -> None:
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == "digest" and isinstance(item, str):
+                digests.add(item)
+            else:
+                _collect_digests(item, digests)
+    elif isinstance(value, list):
+        for item in value:
+            _collect_digests(item, digests)
+
+
+def snapshot_size_bytes(org_id: str, snapshot_id: str) -> int | None:
+    """Stored bytes: the blobs this snapshot's manifest references (shared blobs count fully)."""
+    try:
+        manifest = read_manifest(org_id, snapshot_id)
+    except HTTPException:
+        return None
+    digests: set[str] = set()
+    _collect_digests(manifest, digests)
+    total = 0
+    for digest in digests:
+        try:
+            total += blob_path(org_id, digest).stat().st_size
+        except (OSError, HTTPException):
+            continue
+    return total
+
+
 @router.get("")
-async def list_snapshots(ctx: AuthContext = Depends(current_auth_context)) -> list[Snapshot]:
+async def list_snapshots(
+    include_deleted: bool = False,
+    ctx: AuthContext = Depends(current_auth_context),
+) -> list[SnapshotOut]:
+    org_id = ctx.membership.organization_id
     with get_session() as db:
-        return db.exec(
-            select(Snapshot)
-            .where(Snapshot.org_id == ctx.membership.organization_id)
-            .order_by(Snapshot.created_at.desc())
-        ).all()
+        query = select(Snapshot).where(Snapshot.org_id == org_id)
+        if not include_deleted:
+            query = query.where(Snapshot.deleted_at.is_(None))
+        rows = db.exec(query.order_by(Snapshot.created_at.desc())).all()
+    return [
+        SnapshotOut(
+            id=snapshot.id,
+            source_sandbox_id=snapshot.source_sandbox_id,
+            created_at=snapshot.created_at,
+            deleted_at=snapshot.deleted_at,
+            size_bytes=None if snapshot.deleted_at else snapshot_size_bytes(org_id, snapshot.id),
+        )
+        for snapshot in rows
+    ]
 
 
 @router.post("/{snapshot_id}/restore")
@@ -36,7 +86,7 @@ async def restore_snapshot(
 ) -> Sandbox:
     with get_session() as db:
         snapshot = db.get(Snapshot, snapshot_id)
-        if snapshot is None or snapshot.org_id != ctx.membership.organization_id:
+        if snapshot is None or snapshot.deleted_at is not None or snapshot.org_id != ctx.membership.organization_id:
             raise HTTPException(404, "snapshot not found")
         sandbox = db.get(Sandbox, snapshot.source_sandbox_id)
         if sandbox is None or sandbox.deleted_at is not None:
@@ -125,8 +175,10 @@ async def restore_snapshot(
 async def delete_snapshot(snapshot_id: str, ctx: AuthContext = Depends(current_auth_context)) -> None:
     with get_session() as db:
         snapshot = db.get(Snapshot, snapshot_id)
-        if snapshot is None or snapshot.org_id != ctx.membership.organization_id:
+        if snapshot is None or snapshot.deleted_at is not None or snapshot.org_id != ctx.membership.organization_id:
             raise HTTPException(404, "snapshot not found")
         delete_manifest(snapshot.org_id, snapshot.id)
-        db.delete(snapshot)
+        # Tombstone instead of a hard delete: the row is the deletion history.
+        snapshot.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.add(snapshot)
         db.commit()
