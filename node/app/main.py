@@ -26,6 +26,11 @@ async def health() -> dict:
     return {"status": "ok"}
 
 
+@app.get("/sandboxes")
+async def list_sandboxes() -> list[dict]:
+    """Full snapshot of every VM on this node — the node is the source of truth."""
+    return [{"id": vm["name"], "status": vm["status"]} for vm in await lume.list_vms()]
+
 
 class ExecuteInput(BaseModel):
     command: str

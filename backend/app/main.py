@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .db import init_db
 from .routers import auth, node_connections, node_storage, nodes, sandboxes, servers, snapshots, ssh, waitlist
+from .services import reconciler
 from .services.node_gateway import node_gateway
 
 init_db()
@@ -38,9 +39,18 @@ async def cleanup_loop() -> None:
         await asyncio.sleep(5)
 
 
+# Constant-work reconciliation: nodes are the source of truth for VM state;
+# every sweep pulls a full snapshot from each connected node and corrects rows.
+async def reconcile_loop() -> None:
+    while True:
+        await reconciler.reconcile_all_nodes()
+        await asyncio.sleep(10)
+
+
 @app.on_event("startup")
 async def startup() -> None:
     asyncio.create_task(cleanup_loop())
+    asyncio.create_task(reconcile_loop())
 
 
 @app.on_event("shutdown")
