@@ -1,7 +1,10 @@
 import asyncio
+import base64
+import binascii
 import contextlib
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from pydantic import ValidationError
 from sqlmodel import select
 
 from ..auth import hash_token
@@ -9,6 +12,7 @@ from ..db import get_session
 from ..models import Node, NodeCredential
 from ..services import warm_pool
 from ..services.node_gateway import node_gateway
+from .nodes import NodeMetadataIn, apply_node_metadata
 
 router = APIRouter(tags=["node-connections"])
 
@@ -27,6 +31,29 @@ async def connect_node(websocket: WebSocket, node_id: str) -> None:
         )
         return
 
+    encoded_metadata = websocket.headers.get("x-cider-node-metadata", "")
+    try:
+        metadata = NodeMetadataIn.model_validate_json(
+            base64.b64decode(encoded_metadata, validate=True)
+        )
+    except (ValueError, ValidationError, binascii.Error):
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="invalid node metadata",
+        )
+        return
+    if (
+        metadata.storage_available_bytes > metadata.storage_total_bytes
+        or metadata.default_sandbox_cpu_count > metadata.cpu_count
+        or metadata.default_sandbox_memory_bytes > metadata.memory_bytes
+        or metadata.default_sandbox_storage_bytes > metadata.storage_total_bytes
+    ):
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason="invalid node capacity metadata",
+        )
+        return
+
     with get_session() as db:
         credential = db.exec(
             select(NodeCredential).where(
@@ -35,6 +62,11 @@ async def connect_node(websocket: WebSocket, node_id: str) -> None:
             )
         ).first()
         node = db.get(Node, node_id)
+        if credential is not None and node is not None:
+            apply_node_metadata(node, metadata)
+            db.add(node)
+            db.commit()
+            db.refresh(node)
     if credential is None or node is None:
         await websocket.close(
             code=status.WS_1008_POLICY_VIOLATION,

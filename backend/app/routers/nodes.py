@@ -1,10 +1,10 @@
 import math
 import secrets
 from datetime import datetime, timezone
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import select
@@ -12,6 +12,7 @@ from sqlmodel import select
 from ..auth import AuthContext, current_auth_context, hash_token
 from ..db import get_session
 from ..models import Node, NodeCredential, Sandbox
+from ..services import warm_pool
 from ..services.node_gateway import node_gateway
 
 router = APIRouter(prefix="/nodes")
@@ -23,6 +24,42 @@ class NodeOut(BaseModel):
     id: str
     name: str
     connected: bool
+    metadata: "NodeMetadataOut | None"
+    configuration: "NodeConfigurationOut | None"
+
+
+class NodeMetadataIn(BaseModel):
+    hardware_model: str = Field(min_length=1, max_length=120)
+    chip: str = Field(min_length=1, max_length=120)
+    macos_version: str = Field(min_length=1, max_length=40)
+    cpu_count: int = Field(ge=1)
+    memory_bytes: int = Field(ge=1)
+    storage_total_bytes: int = Field(ge=1)
+    storage_available_bytes: int = Field(ge=0)
+    default_sandbox_cpu_count: int = Field(ge=1)
+    default_sandbox_memory_bytes: int = Field(ge=1)
+    default_sandbox_storage_bytes: int = Field(ge=1)
+
+
+class NodeMetadataOut(BaseModel):
+    hardware_model: str
+    chip: str
+    macos_version: str
+    cpu_count: int
+    memory_bytes: int
+    storage_total_bytes: int
+    storage_available_bytes: int
+
+
+class NodeConfigurationIn(BaseModel):
+    vm_count: Literal[1, 2]
+    sandbox_cpu_count: int = Field(ge=1)
+    sandbox_memory_bytes: int = Field(ge=1)
+    sandbox_storage_bytes: int = Field(ge=1)
+
+
+class NodeConfigurationOut(NodeConfigurationIn):
+    pass
 
 
 class NodePage(BaseModel):
@@ -40,6 +77,81 @@ class NodeEnrollmentOut(BaseModel):
     id: str
     name: str
     token: str
+
+
+def apply_node_metadata(node: Node, metadata: NodeMetadataIn) -> None:
+    node.hardware_model = metadata.hardware_model
+    node.chip = metadata.chip
+    node.macos_version = metadata.macos_version
+    node.cpu_count = metadata.cpu_count
+    node.memory_bytes = metadata.memory_bytes
+    node.storage_total_bytes = metadata.storage_total_bytes
+    node.storage_available_bytes = metadata.storage_available_bytes
+    if (
+        node.sandbox_cpu_count is None
+        and node.sandbox_memory_bytes is None
+        and node.sandbox_storage_bytes is None
+    ):
+        node.vm_count = 2 if (
+            metadata.default_sandbox_cpu_count * 2 <= metadata.cpu_count
+            and metadata.default_sandbox_memory_bytes * 2 <= metadata.memory_bytes
+            and metadata.default_sandbox_storage_bytes * 2 <= metadata.storage_total_bytes
+        ) else 1
+    if node.sandbox_cpu_count is None:
+        node.sandbox_cpu_count = metadata.default_sandbox_cpu_count
+    if node.sandbox_memory_bytes is None:
+        node.sandbox_memory_bytes = metadata.default_sandbox_memory_bytes
+    if node.sandbox_storage_bytes is None:
+        node.sandbox_storage_bytes = metadata.default_sandbox_storage_bytes
+
+
+def node_out(node: Node) -> NodeOut:
+    metadata = None
+    if all(
+        value is not None
+        for value in (
+            node.hardware_model,
+            node.chip,
+            node.macos_version,
+            node.cpu_count,
+            node.memory_bytes,
+            node.storage_total_bytes,
+            node.storage_available_bytes,
+        )
+    ):
+        metadata = NodeMetadataOut(
+            hardware_model=node.hardware_model,
+            chip=node.chip,
+            macos_version=node.macos_version,
+            cpu_count=node.cpu_count,
+            memory_bytes=node.memory_bytes,
+            storage_total_bytes=node.storage_total_bytes,
+            storage_available_bytes=node.storage_available_bytes,
+        )
+
+    configuration = None
+    if all(
+        value is not None
+        for value in (
+            node.sandbox_cpu_count,
+            node.sandbox_memory_bytes,
+            node.sandbox_storage_bytes,
+        )
+    ):
+        configuration = NodeConfigurationOut(
+            vm_count=node.vm_count,
+            sandbox_cpu_count=node.sandbox_cpu_count,
+            sandbox_memory_bytes=node.sandbox_memory_bytes,
+            sandbox_storage_bytes=node.sandbox_storage_bytes,
+        )
+
+    return NodeOut(
+        id=node.id,
+        name=node.name,
+        connected=node_gateway.is_connected(node.id),
+        metadata=metadata,
+        configuration=configuration,
+    )
 
 
 @router.get("")
@@ -68,7 +180,55 @@ async def list_nodes(
         pages = max(1, math.ceil(total / PAGE_SIZE))
         page = min(page, pages)
         items = db.exec(query.order_by(Node.name).offset((page - 1) * PAGE_SIZE).limit(PAGE_SIZE)).all()
-    return NodePage(items=[NodeOut(id=node.id, name=node.name, connected=node_gateway.is_connected(node.id)) for node in items], page=page, pages=pages, total=total)
+    return NodePage(items=[node_out(node) for node in items], page=page, pages=pages, total=total)
+
+
+@router.get("/{node_id}")
+async def get_node(
+    node_id: str,
+    ctx: AuthContext = Depends(current_auth_context),
+) -> NodeOut:
+    with get_session() as db:
+        node = db.get(Node, node_id)
+        credential = db.get(NodeCredential, node_id)
+        if node is None or node.org_id != ctx.membership.organization_id or credential is None:
+            raise HTTPException(404, "node not found")
+    return node_out(node)
+
+
+@router.patch("/{node_id}/configuration")
+async def update_node_configuration(
+    node_id: str,
+    body: NodeConfigurationIn,
+    ctx: AuthContext = Depends(current_auth_context),
+) -> NodeOut:
+    with get_session() as db:
+        node = db.get(Node, node_id)
+        if node is None or node.org_id != ctx.membership.organization_id:
+            raise HTTPException(404, "node not found")
+        if not node_gateway.is_connected(node.id):
+            raise HTTPException(409, "node must be connected to change its configuration")
+        if warm_pool.warming[node.id] > 0:
+            raise HTTPException(409, "wait for node provisioning to finish before changing its configuration")
+        if node.cpu_count is None or node.memory_bytes is None or node.storage_available_bytes is None:
+            raise HTTPException(409, "node hardware metadata is unavailable")
+        if body.sandbox_cpu_count * body.vm_count > node.cpu_count:
+            raise HTTPException(422, "configured sandboxes exceed the node's CPU capacity")
+        if body.sandbox_memory_bytes * body.vm_count > node.memory_bytes:
+            raise HTTPException(422, "configured sandboxes exceed the node's memory capacity")
+        if body.sandbox_storage_bytes * body.vm_count > node.storage_available_bytes:
+            raise HTTPException(422, "configured sandboxes exceed the node's available storage")
+
+        node.vm_count = body.vm_count
+        node.sandbox_cpu_count = body.sandbox_cpu_count
+        node.sandbox_memory_bytes = body.sandbox_memory_bytes
+        node.sandbox_storage_bytes = body.sandbox_storage_bytes
+        db.add(node)
+        db.commit()
+        db.refresh(node)
+
+    await warm_pool.reconcile_node_warm_pool(node_id)
+    return node_out(node)
 
 
 @router.post("/enrollments", status_code=201)

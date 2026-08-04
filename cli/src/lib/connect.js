@@ -1,8 +1,8 @@
 import { execFile, spawn } from "node:child_process";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
-import { hostname } from "node:os";
+import { mkdir, readFile, stat, statfs, writeFile } from "node:fs/promises";
+import { cpus, hostname, totalmem } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 
@@ -123,6 +123,43 @@ async function ensureBaseImageId() {
   return markerPath;
 }
 
+async function nodeMetadata() {
+  const [{ stdout: hardwareModel }, { stdout: chip }, { stdout: macosVersion }, { stdout: baseJson }, filesystem] = await Promise.all([
+    exec("sysctl", ["-n", "hw.model"]),
+    exec("sysctl", ["-n", "machdep.cpu.brand_string"]),
+    exec("sw_vers", ["-productVersion"]),
+    exec("lume", ["get", IMAGE_NAME, "-f", "json", "--storage", VM_STORAGE]),
+    statfs(VM_STORAGE, { bigint: true }),
+  ]);
+  const baseImages = JSON.parse(baseJson);
+  if (!Array.isArray(baseImages) || baseImages.length !== 1) {
+    throw new Error(`expected exactly one ${IMAGE_NAME} VM while collecting node metadata`);
+  }
+  const base = baseImages[0];
+  const metadata = {
+    hardware_model: hardwareModel.trim(),
+    chip: chip.trim(),
+    macos_version: macosVersion.trim(),
+    cpu_count: cpus().length,
+    memory_bytes: totalmem(),
+    storage_total_bytes: Number(filesystem.blocks * filesystem.bsize),
+    storage_available_bytes: Number(filesystem.bavail * filesystem.bsize),
+    default_sandbox_cpu_count: base.cpuCount,
+    default_sandbox_memory_bytes: base.memorySize,
+    default_sandbox_storage_bytes: base.diskSize?.total,
+  };
+  for (const [key, value] of Object.entries(metadata)) {
+    const minimum = key === "storage_available_bytes" ? 0 : 1;
+    if (typeof value === "number" && (!Number.isSafeInteger(value) || value < minimum)) {
+      throw new Error(`invalid ${key} reported by this Mac`);
+    }
+    if (typeof value === "string" && !value) {
+      throw new Error(`missing ${key} reported by this Mac`);
+    }
+  }
+  return metadata;
+}
+
 // Enrolling is idempotent per organization and name: the backend reactivates an offline
 // node of the same name with a freshly rotated credential, so a stale local token heals here.
 async function enrollment(config, name) {
@@ -220,12 +257,13 @@ export async function connect(options) {
   await ensureSshKey();
   const imageReference = await ensureImage({ assumeYes: options.yes, image });
   const baseImageIdPath = await ensureBaseImageId();
+  const metadata = await nodeMetadata();
   const node = await enrollment(config, options.name);
   process.stdout.write(`Base VM ready: ${join(VM_STORAGE, IMAGE_NAME)}\n`);
   const nodeCommand = options.nodeCommand || process.env.CIDER_NODE_COMMAND || "cider-node";
   const service = await startNodeService(nodeCommand, config, node, baseImageIdPath, imageReference);
   try {
-    await holdConnection(config, node);
+    await holdConnection(config, node, metadata);
   } finally {
     await stopNodeService(service);
   }

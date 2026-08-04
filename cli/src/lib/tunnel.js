@@ -44,7 +44,7 @@ function reconnectDelay(state, ms) {
   });
 }
 
-export async function holdConnection(config, node, nodeUrl = NODE_URL) {
+export async function holdConnection(config, node, metadata, nodeUrl = NODE_URL) {
   const state = { stopping: false, socket: null, wake: null };
   const shutdown = () => {
     state.stopping = true;
@@ -62,7 +62,7 @@ export async function holdConnection(config, node, nodeUrl = NODE_URL) {
     while (!state.stopping) {
       const startedAt = Date.now();
       try {
-        await runConnection(config, node, nodeUrl, state);
+        await runConnection(config, node, metadata, nodeUrl, state);
         return;
       } catch (error) {
         if (state.stopping) return;
@@ -81,10 +81,13 @@ export async function holdConnection(config, node, nodeUrl = NODE_URL) {
   }
 }
 
-function runConnection(config, node, nodeUrl, state) {
+function runConnection(config, node, metadata, nodeUrl, state) {
   return new Promise((resolve, reject) => {
     const socket = new WebSocket(websocketUrl(config.apiUrl, node.id), {
-      headers: { Authorization: `Bearer ${node.token}` },
+      headers: {
+        Authorization: `Bearer ${node.token}`,
+        "X-Cider-Node-Metadata": Buffer.from(JSON.stringify(metadata)).toString("base64"),
+      },
       handshakeTimeout: 15_000,
     });
     state.socket = socket;

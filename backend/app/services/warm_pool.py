@@ -26,7 +26,7 @@ def available_nodes(db, org_id: str | None = None, node_id: str | None = None):
 def node_has_vm_capacity(db, node):
     sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node.id, Sandbox.deleted_at.is_(None))).all()
     local = sum(sandbox.status != "stopped" for sandbox in sandboxes)
-    return local + warming[node.id] < settings.max_sandboxes_per_node
+    return local + warming[node.id] < node.vm_count
 
 
 def require_available_node(db, org_id: str, node_id: str | None = None):
@@ -38,7 +38,7 @@ def require_available_node(db, org_id: str, node_id: str | None = None):
     for node in nodes:
         if node_has_vm_capacity(db, node):
             return node
-    raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
+    raise HTTPException(429, "all nodes are at their configured VM capacity")
 
 
 def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None):
@@ -67,7 +67,7 @@ def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None):
     for node in nodes:
         if node_has_vm_capacity(db, node):
             return node, None
-    raise HTTPException(429, "all nodes are at the macOS limit of 2 VMs")
+    raise HTTPException(429, "all nodes are at their configured VM capacity")
 
 
 async def ensure_node_has_warm_sandboxes(node_id: str):
@@ -75,11 +75,42 @@ async def ensure_node_has_warm_sandboxes(node_id: str):
         sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
         allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes)
         warm = sum(sandbox.status == "warm" for sandbox in sandboxes)
-        target = min(settings.warm_sandboxes_per_node, settings.max_sandboxes_per_node - allocated)
+        node = db.get(Node, node_id)
+        if node is None:
+            return
+        target = min(settings.warm_sandboxes_per_node, node.vm_count - allocated)
 
     for _ in range(max(0, target - warm - warming[node_id])):
         warming[node_id] += 1
         asyncio.create_task(warm_one(node_id))
+
+
+async def reconcile_node_warm_pool(node_id: str) -> None:
+    with get_session() as db:
+        node = db.get(Node, node_id)
+        if node is None:
+            raise RuntimeError(f"node not found while reconciling capacity: {node_id}")
+        sandboxes = db.exec(
+            select(Sandbox).where(
+                Sandbox.node_id == node_id,
+                Sandbox.deleted_at.is_(None),
+            )
+        ).all()
+        allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes)
+        warm = [sandbox for sandbox in sandboxes if sandbox.status == "warm"]
+        target = min(settings.warm_sandboxes_per_node, max(0, node.vm_count - allocated))
+        extra = warm[target:]
+
+    for sandbox in extra:
+        await node_transport.request(node, "DELETE", f"/sandboxes/{sandbox.id}")
+        with get_session() as db:
+            stored = db.get(Sandbox, sandbox.id)
+            if stored is not None and stored.deleted_at is None:
+                stored.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                db.add(stored)
+                db.commit()
+
+    await ensure_node_has_warm_sandboxes(node_id)
 
 
 async def warm_one(node_id: str):
