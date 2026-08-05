@@ -1,6 +1,5 @@
 import asyncio
 import json
-import time
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -331,7 +330,6 @@ async def stop_server(server_id: str, ctx: AuthContext = Depends(current_auth_co
 
 
 async def _stop_task(server_id: str, node_id: str) -> None:
-    t0 = time.monotonic()
     with get_session() as db:
         node = db.get(Node, node_id)
         server = db.get(Server, server_id)
@@ -349,7 +347,6 @@ async def _stop_task(server_id: str, node_id: str) -> None:
                 db.add(stored)
                 db.commit()
         return
-    print(f"[timing] server stop {server_id}: export={time.monotonic() - t0:.1f}s", flush=True)
     with get_session() as db:
         stored = db.get(Server, server_id)
         if stored is not None and stored.deleted_at is None:
@@ -380,7 +377,6 @@ async def start_server(server_id: str, ctx: AuthContext = Depends(current_auth_c
 
 
 async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> None:
-    t0 = time.monotonic()
     with get_session() as db:
         node = db.get(Node, node_id)
         server = db.get(Server, server_id)
@@ -388,10 +384,8 @@ async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> No
         return
     try:
         await vm_lifecycle.restore_vm(node, server.vm_id, server.org_id, storage_key(server))
-        t1 = time.monotonic()
         commands, start = relaunch_commands(server_config(server))
         await vm_lifecycle.run_launch(node, server.vm_id, setup=commands, start=start)
-        print(f"[timing] server start {server_id}: restore={t1 - t0:.1f}s relaunch={time.monotonic() - t1:.1f}s", flush=True)
     except Exception as error:
         detail = error.detail if isinstance(error, HTTPException) else str(error)
         with get_session() as db:
