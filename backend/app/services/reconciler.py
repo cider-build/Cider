@@ -62,32 +62,26 @@ async def reconcile_node(node_id: str) -> None:
             select(Server).where(Server.node_id == node_id, Server.deleted_at.is_(None))
         ).all()
         for server in servers:
-            # provisioning/failed are backend-owned states; running/stopped mirror the VM.
-            if server.status not in ("running", "stopped") or not server.vm_id:
+            # Only running servers hold a VM: stopped ones live in Cider
+            # storage, provisioning/failed are backend-owned states.
+            if server.status != "running" or not server.vm_id:
                 continue
             if server.created_at > cutoff:
                 continue
             state = vm_status.get(server.vm_id)
-            if state is None:
-                # The VM (and its disk) is gone from the node.
-                server.status = "failed"
-            elif state == "running" and server.status == "stopped":
-                server.status = "running"
-            elif state != "running" and server.status == "running":
-                server.status = "stopped"
-            else:
+            if state == "running":
                 continue
+            # The VM is gone or died underneath the server.
+            server.status = "failed"
             db.add(server)
 
         sandboxes = db.exec(
-            select(Sandbox).where(
-                Sandbox.node_id == node_id,
-                Sandbox.deleted_at.is_(None),
-                # stopped sandboxes hold no VM by design; restoring is mid-flight.
-                Sandbox.status.in_(("active", "warm")),
-            )
+            select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))
         ).all()
         for sandbox in sandboxes:
+            # stopped sandboxes hold no VM by design; restoring is mid-flight.
+            if sandbox.status not in ("active", "warm"):
+                continue
             if sandbox.created_at > cutoff:
                 continue
             if sandbox.id not in vm_status:
@@ -95,5 +89,19 @@ async def reconcile_node(node_id: str) -> None:
                 db.add(sandbox)
                 refill = True
         db.commit()
+
+    # The other direction: VMs no live row claims are leaks (a crash or
+    # restart between VM creation and row commit). Rows are the intent;
+    # unclaimed VMs get collected. In-flight creates are covered by the
+    # warming counter, which skips this node's sweep entirely.
+    claimed = {sandbox.id for sandbox in sandboxes if sandbox.deleted_at is None}
+    claimed |= {server.vm_id for server in servers if server.vm_id}
+    orphans = [vm_id for vm_id in vm_status if vm_id not in claimed]
+    for vm_id in orphans:
+        try:
+            await node_transport.request(node, "DELETE", f"/sandboxes/{vm_id}")
+        except HTTPException:
+            continue
+        refill = True
     if refill:
         await warm_pool.ensure_node_has_warm_sandboxes(node_id)

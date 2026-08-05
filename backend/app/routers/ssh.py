@@ -7,7 +7,7 @@ from sqlmodel import select
 
 from ..auth import AuthContext, bearer_auth_context, current_auth_context, hash_token
 from ..db import get_session
-from ..models import Node, NodeCredential, Sandbox
+from ..models import Node, NodeCredential, Sandbox, Server
 from ..services.node_gateway import NodeUnavailableError, SshTunnel, node_gateway
 
 router = APIRouter(tags=["ssh"])
@@ -18,6 +18,7 @@ class SshTarget(BaseModel):
     node_id: str
     node_name: str
     status: str
+    server_name: str | None = None
 
 
 class SshSelection(BaseModel):
@@ -36,6 +37,17 @@ def available_ssh_targets(org_id: str) -> list[SshTarget]:
             )
             .order_by(Sandbox.created_at.desc())
         ).all()
+    with get_session() as db:
+        server_rows = db.exec(
+            select(Server, Node)
+            .join(Node, Server.node_id == Node.id)
+            .where(
+                Server.org_id == org_id,
+                Server.deleted_at.is_(None),
+                Server.status == "running",
+            )
+            .order_by(Server.created_at.desc())
+        ).all()
     return [
         SshTarget(
             sandbox_id=sandbox.id,
@@ -45,6 +57,16 @@ def available_ssh_targets(org_id: str) -> list[SshTarget]:
         )
         for sandbox, node in rows
         if node_gateway.is_connected(node.id)
+    ] + [
+        SshTarget(
+            sandbox_id=server.vm_id,
+            node_id=node.id,
+            node_name=node.name,
+            status=server.status,
+            server_name=server.name,
+        )
+        for server, node in server_rows
+        if server.vm_id and node_gateway.is_connected(node.id)
     ]
 
 
@@ -79,9 +101,13 @@ async def pipe_websocket(source: WebSocket, destination: WebSocket) -> None:
         message = await source.receive()
         if message["type"] == "websocket.disconnect":
             return
-        if message.get("bytes") is None:
-            raise RuntimeError("SSH tunnels only accept binary frames")
-        await destination.send_bytes(message["bytes"])
+        if message.get("bytes") is not None:
+            await destination.send_bytes(message["bytes"])
+        elif message.get("text") is not None:
+            # Control frames (terminal resize) ride as text.
+            await destination.send_text(message["text"])
+        else:
+            raise RuntimeError("SSH tunnels only accept data or control frames")
 
 
 @router.websocket("/ssh/{sandbox_id}")
@@ -97,7 +123,18 @@ async def user_ssh(websocket: WebSocket, sandbox_id: str) -> None:
                 or sandbox.deleted_at is not None
                 or sandbox.status != "active"
             ):
-                raise HTTPException(404, "available sandbox not found")
+                # A running server's VM is an SSH target too.
+                server = db.exec(
+                    select(Server).where(
+                        Server.vm_id == sandbox_id,
+                        Server.org_id == ctx.membership.organization_id,
+                        Server.deleted_at.is_(None),
+                        Server.status == "running",
+                    )
+                ).first()
+                if server is None:
+                    raise HTTPException(404, "available sandbox not found")
+                sandbox = server
             node = db.get(Node, sandbox.node_id)
             if node is None or not node_gateway.is_connected(node.id):
                 raise HTTPException(404, "available sandbox not found")

@@ -2,6 +2,7 @@ import asyncio
 import gzip
 import hashlib
 import os
+import time
 import urllib.error
 import urllib.request
 
@@ -122,9 +123,20 @@ def _export_files(sandbox_id: str, snapshot_id: str) -> dict:
 
 
 async def export(sandbox_id: str, snapshot_id: str) -> dict:
+    t0 = time.monotonic()
     await lume.execute(sandbox_id, "/bin/sync")
+    t1 = time.monotonic()
     await lume.stop(sandbox_id)
-    return await asyncio.to_thread(_export_files, sandbox_id, snapshot_id)
+    t2 = time.monotonic()
+    manifest = await asyncio.to_thread(_export_files, sandbox_id, snapshot_id)
+    t3 = time.monotonic()
+    print(
+        f"[timing] export {sandbox_id}: sync={t1 - t0:.1f}s vm-stop={t2 - t1:.1f}s "
+        f"disk-scan+upload={t3 - t2:.1f}s ({len(manifest['disk_chunks'])} chunks, "
+        f"{manifest['stored_bytes'] / 1024**2:.0f} MiB) total={t3 - t0:.1f}s",
+        flush=True,
+    )
+    return manifest
 
 
 def _restore_files(sandbox_id: str, manifest: dict) -> None:
@@ -172,10 +184,19 @@ def _restore_files(sandbox_id: str, manifest: dict) -> None:
 
 
 async def restore(sandbox_id: str, manifest: dict) -> None:
+    t0 = time.monotonic()
     await lume.clone(config.BASE_VM, sandbox_id)
+    t1 = time.monotonic()
     try:
         await asyncio.to_thread(_restore_files, sandbox_id, manifest)
+        t2 = time.monotonic()
         await lume.start(sandbox_id)
+        t3 = time.monotonic()
+        print(
+            f"[timing] restore {sandbox_id}: clone={t1 - t0:.1f}s "
+            f"apply-chunks={t2 - t1:.1f}s vm-start={t3 - t2:.1f}s total={t3 - t0:.1f}s",
+            flush=True,
+        )
     except BaseException:
         await lume.delete(sandbox_id)
         raise

@@ -8,7 +8,10 @@ function printTargets(targets) {
     process.stdout.write("No available sandboxes.\n");
     return;
   }
-  const columns = ["sandbox_id", "node_name", "status"];
+  const columns = ["sandbox_id", "server_name", "node_name", "status"];
+  for (const target of targets) {
+    if (target.server_name == null) target.server_name = "-";
+  }
   const widths = columns.map((column) =>
     Math.max(column.length, ...targets.map((target) => String(target[column]).length)),
   );
@@ -49,13 +52,19 @@ function runSsh(config, target) {
       if (socket.readyState === WebSocket.OPEN) socket.send(data);
     };
     const onEnd = () => {
+      // stdin is gone (piped input finished): send EOF, give remote output a
+      // moment to flush, then close instead of lingering forever.
       if (socket.readyState === WebSocket.OPEN) socket.send(Buffer.from([4]));
+      setTimeout(() => {
+        if (socket.readyState === WebSocket.OPEN) socket.close(1000, "stdin closed");
+      }, 750);
     };
     const onSignal = () => {
       if (socket.readyState === WebSocket.OPEN) socket.close(1000, "CLI stopped");
       else socket.terminate();
     };
     const cleanup = () => {
+      process.stdout.off("resize", sendResize);
       process.stdin.off("data", onData);
       process.stdin.off("end", onEnd);
       process.off("SIGINT", onSignal);
@@ -71,10 +80,25 @@ function runSsh(config, target) {
       else resolve();
     };
 
+    const sendResize = () => {
+      if (socket.readyState !== WebSocket.OPEN) return;
+      socket.send(
+        JSON.stringify({
+          term: process.env.TERM || "xterm-256color",
+          resize: {
+            cols: process.stdout.columns || 80,
+            rows: process.stdout.rows || 24,
+          },
+        }),
+      );
+    };
     socket.on("open", () => {
       process.stderr.write(
         `Connecting to ${target.sandbox_id} on ${target.node_name}\n`,
       );
+      // First frame: terminal size and TERM, so the remote PTY matches.
+      sendResize();
+      process.stdout.on("resize", sendResize);
       if (process.stdin.isTTY) {
         process.stdin.setRawMode(true);
         raw = true;
@@ -122,13 +146,19 @@ async function selectTarget(client, sandboxId) {
     target = await client.selectSshTarget(sandboxId);
   } catch (error) {
     if (error.status === 404) {
-      throw new Error(`sandbox "${sandboxId}" not found or unavailable`);
+      throw new Error(`"${sandboxId}" is not an available sandbox or running server`);
     }
     throw error;
   }
   return target;
 }
 
+
+async function resolveTargetId(client, selector) {
+  const targets = await client.listSshTargets();
+  const byName = targets.find((target) => target.server_name === selector);
+  return byName ? byName.sandbox_id : selector;
+}
 
 export async function ssh(config, sandboxId, options) {
   const client = makeClient(config);
@@ -152,7 +182,7 @@ export async function ssh(config, sandboxId, options) {
   }
 
   if (!sandboxId) {
-    throw new Error("specify a sandbox ID, --list, or --new [node]");
+    throw new Error("specify a sandbox ID, a server name, --list, or --new [node]");
   }
-  await runSsh(config, await selectTarget(client, sandboxId));
+  await runSsh(config, await selectTarget(client, await resolveTargetId(client, sandboxId)));
 }

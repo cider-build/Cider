@@ -11,13 +11,10 @@ from sqlmodel import select
 
 from ..auth import AuthContext, current_auth_context
 from ..config import settings
-from ..services import node_transport, warm_pool
-from ..services.node_gateway import node_gateway
+from ..services import node_transport, vm_lifecycle, warm_pool
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
-import uuid
-
-from ..snapshot_store import discard_manifest, read_manifest, write_manifest
+from ..snapshot_store import discard_manifest, write_manifest
 
 router = APIRouter(prefix="/sandboxes")
 
@@ -299,29 +296,22 @@ async def pause_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth
             raise HTTPException(404, "node not found")
         node_id = node.id
 
-        response = await node_transport.request(
-            node,
-            "POST",
-            f"/sandboxes/{sandbox.id}/portable-snapshots",
-            json={"snapshot": uuid.uuid4().hex},
-        )
-        manifest = response.json()["manifest"]
+        # "pausing" keeps the reconciler from tombstoning the row in the
+        # window where the VM is already gone but the status is not yet paused.
+        sandbox.status = "pausing"
+        db.add(sandbox)
+        db.commit()
         try:
-            write_manifest(sandbox.org_id, pause_key(sandbox.id), manifest)
-            sandbox.status = "paused"
+            await vm_lifecycle.export_vm(node, sandbox.id, sandbox.org_id, pause_key(sandbox.id))
+        except BaseException:
+            sandbox.status = "active"
             db.add(sandbox)
             db.commit()
-        except Exception as error:
-            discard_manifest(sandbox.org_id, pause_key(sandbox.id))
-            raise HTTPException(500, f"pause state could not be saved: {error}") from error
+            raise
+        sandbox.status = "paused"
+        db.add(sandbox)
+        db.commit()
         db.refresh(sandbox)
-        try:
-            await node_transport.request(node, "DELETE", f"/sandboxes/{sandbox.id}")
-        except HTTPException as error:
-            raise HTTPException(
-                500,
-                f"sandbox was paused, but removing its stopped VM failed: {error.detail}",
-            ) from error
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
     return sandbox
 
@@ -341,52 +331,16 @@ async def resume_sandbox(
         if sandbox.status != "paused":
             raise HTTPException(409, f"sandbox is {sandbox.status}; only a paused sandbox can be resumed")
 
-        if requested_node_id is not None:
-            node = db.get(Node, requested_node_id)
-            if node is None or node.org_id != sandbox.org_id or not node_gateway.is_connected(node.id):
-                raise HTTPException(404, "connected destination node not found")
-            candidates = [node]
-        else:
-            candidates = warm_pool.available_nodes(db, sandbox.org_id)
-            if not candidates:
-                raise HTTPException(404, "no connected nodes")
-
-        node = None
-        for candidate in candidates:
-            if warm_pool.node_has_vm_capacity(db, candidate):
-                node = candidate
-                break
-            warm = db.exec(
-                select(Sandbox).where(
-                    Sandbox.node_id == candidate.id,
-                    Sandbox.deleted_at.is_(None),
-                    Sandbox.status == "warm",
-                )
-            ).first()
-            if warm is not None:
-                await node_transport.request(candidate, "DELETE", f"/sandboxes/{warm.id}")
-                warm.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                db.add(warm)
-                db.commit()
-                node = candidate
-                break
-        if node is None:
-            raise HTTPException(429, "every connected node is at its VM capacity; stop something first")
+        node = await vm_lifecycle.find_capacity_node(db, sandbox.org_id, requested_node_id)
 
         previous_node_id = sandbox.node_id
         node_id = node.id
-        manifest = read_manifest(sandbox.org_id, pause_key(sandbox.id))
         sandbox.node_id = node.id
         sandbox.status = "restoring"
         db.add(sandbox)
         db.commit()
         try:
-            await node_transport.request(
-                node,
-                "POST",
-                f"/sandboxes/{sandbox.id}/restore",
-                json={"manifest": manifest},
-            )
+            await vm_lifecycle.restore_vm(node, sandbox.id, sandbox.org_id, pause_key(sandbox.id))
         except BaseException:
             sandbox.node_id = previous_node_id
             sandbox.status = "paused"
@@ -402,13 +356,8 @@ async def resume_sandbox(
         db.refresh(sandbox)
         # The disk is back but the start process died with the old VM; relaunch
         # it. Setup does not re-run — its effects live on the disk.
-        if sandbox.launch_config and sandbox.launch_config.get("start"):
-            await node_transport.request(
-                node,
-                "POST",
-                f"/sandboxes/{sandbox.id}/launch-config",
-                json={"start": sandbox.launch_config["start"]},
-            )
+        if sandbox.launch_config:
+            await vm_lifecycle.run_launch(node, sandbox.id, start=sandbox.launch_config.get("start"))
     discard_manifest(sandbox.org_id, pause_key(sandbox.id))
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
     return sandbox

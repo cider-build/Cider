@@ -23,6 +23,7 @@ class Server(SQLModel, table=True):
     vm_id: str = Field(index=True)
     image: dict | None = Field(default=None, sa_column=Column(JSON))
     status: str = Field(default="provisioning", index=True)
+    status_detail: str | None = None
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc).replace(tzinfo=None)
     )

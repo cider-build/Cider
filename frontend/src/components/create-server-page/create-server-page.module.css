@@ -600,3 +600,154 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* Key editor: nothing until you add a key; rows read as a quiet ledger. */
+.keyEditor {
+  margin-top: 14px;
+}
+.keyIntro {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+.keyRow {
+  align-items: center;
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 150px minmax(0, 1fr) auto;
+  padding: 7px 0;
+}
+.keyRow + .keyRow {
+  border-top: 1px solid #f0f0f0;
+}
+.keyName span {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+}
+.keyName code {
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+}
+.keyValue,
+.keyCustomName {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  min-width: 0;
+  padding: 7px 11px;
+  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease), transform 150ms var(--ease);
+}
+.keyValue {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.04em;
+}
+.keyCustomName {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+.keyValue:focus,
+.keyCustomName:focus {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 0 #dcdcdc;
+  outline: none;
+  transform: translate(-1px, -1px);
+}
+.keyNote {
+  color: var(--faint);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.keyRemove {
+  background: none;
+  border: none;
+  color: var(--faint);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 4px 6px;
+  transition: color 130ms var(--ease);
+}
+.keyRemove:hover {
+  color: #b42318;
+}
+.keyConfirm {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  box-shadow: 2px 2px 0 0 #ececec;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  transition: box-shadow 130ms var(--ease), transform 130ms var(--ease);
+}
+.keyConfirm:hover:not(:disabled) {
+  box-shadow: 1px 1px 0 0 #ececec;
+  transform: translate(1px, 1px);
+}
+.keyConfirm:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.keyAdd {
+  margin-top: 10px;
+  position: relative;
+}
+.keyAddBtn {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  box-shadow: 2px 2px 0 0 #ececec;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 13px;
+  transition: border-color 130ms var(--ease), box-shadow 130ms var(--ease), color 130ms var(--ease), transform 130ms var(--ease);
+}
+.keyAddBtn:hover {
+  border-color: var(--faint);
+  box-shadow: 1px 1px 0 0 #ececec;
+  color: var(--ink);
+  transform: translate(1px, 1px);
+}
+.keyMenu {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  bottom: calc(100% + 6px);
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.25);
+  left: 0;
+  min-width: 260px;
+  padding: 6px;
+  position: absolute;
+  z-index: 40;
+}
+.keyOpt {
+  align-items: baseline;
+  background: none;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 10px;
+  justify-content: space-between;
+  padding: 8px 10px;
+  text-align: left;
+  transition: background 120ms var(--ease);
+  width: 100%;
+}
+.keyOpt:hover {
+  background: var(--bg);
+}
+.keyOpt code {
+  color: var(--faint);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10.5px;
+}

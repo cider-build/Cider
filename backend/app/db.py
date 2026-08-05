@@ -10,7 +10,9 @@ engine = create_engine(
 
 
 def get_session() -> Session:
-    return Session(engine)
+    # Sessions here are short-lived; keep attribute values readable after a
+    # commit so instances can be returned from a closed session safely.
+    return Session(engine, expire_on_commit=False)
 
 
 def session_dependency():

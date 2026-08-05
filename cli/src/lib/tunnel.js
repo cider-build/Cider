@@ -274,12 +274,9 @@ function bridgeWebSockets(first, second) {
       else resolve();
     };
     const forward = (destination) => (data, isBinary) => {
-      if (!isBinary) {
-        finish(new Error("SSH tunnel received a text frame"));
-        return;
-      }
       if (destination.readyState !== WebSocket.OPEN) return;
-      destination.send(data, (error) => {
+      // Binary frames are terminal data; text frames are control (resize).
+      destination.send(isBinary ? data : data.toString(), { binary: isBinary }, (error) => {
         if (error) finish(error);
       });
     };

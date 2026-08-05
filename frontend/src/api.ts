@@ -30,16 +30,18 @@ export type Node = {
 };
 export type NodePage = { items: Node[]; page: number; pages: number; total: number };
 export type Sandbox = { id: string; node_id: string; node_name: string; status: string; created_at: string; deleted_at: string | null };
-export type ServerImageSelection = {
-  os: string;
-  variant: string;
+export type ServerConfig = {
+  image: string;
   software: string[];
-  openclaw_channels: string[];
+  channels: string[];
+  env?: Record<string, string>;
+  setup?: string | string[] | null;
+  start?: string | null;
 };
 export type CreateServerInput = {
   name: string;
   node_id: string | null;
-  image: ServerImageSelection;
+  config: ServerConfig;
 };
 export type Server = {
   id: string;
@@ -47,7 +49,8 @@ export type Server = {
   node_id: string;
   node_name: string;
   status: string;
-  image: ServerImageSelection | null;
+  status_detail: string | null;
+  config: ServerConfig | null;
   created_at: string;
   deleted_at: string | null;
 };
@@ -160,6 +163,11 @@ export async function stopServer(id: string): Promise<Server> {
 
 export async function startServer(id: string): Promise<Server> {
   const response = await requireOk(await fetch(`${API_URL}/servers/${id}/start`, { method: "POST", credentials: "include" }));
+  return await response.json();
+}
+
+export async function retryServer(id: string): Promise<Server> {
+  const response = await requireOk(await fetch(`${API_URL}/servers/${id}/retry`, { method: "POST", credentials: "include" }));
   return await response.json();
 }
 

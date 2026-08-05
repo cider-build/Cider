@@ -221,6 +221,14 @@ function NodePicker({
   );
 }
 
+const PROVIDER_KEYS: Array<{ id: string; name: string; placeholder: string }> = [
+  { id: "ANTHROPIC_API_KEY", name: "Anthropic", placeholder: "sk-ant-…" },
+  { id: "OPENAI_API_KEY", name: "OpenAI", placeholder: "sk-…" },
+  { id: "OPENROUTER_API_KEY", name: "OpenRouter", placeholder: "sk-or-…" },
+  { id: "GROQ_API_KEY", name: "Groq", placeholder: "gsk-…" },
+  { id: "XAI_API_KEY", name: "xAI", placeholder: "xai-…" },
+];
+
 export function CreateServerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -229,7 +237,23 @@ export function CreateServerPage() {
   const [variant, setVariant] = useState<VariantId>("vanilla");
   const [software, setSoftware] = useState<SoftwareId[]>([]);
   const [channels, setChannels] = useState<ChannelId[]>(["imessage", "webchat"]);
+  const [envValues, setEnvValues] = useState<Record<string, string>>({});
+  const [addedKeys, setAddedKeys] = useState<string[]>([]);
+  const [keyMenuOpen, setKeyMenuOpen] = useState(false);
+  const [customDraft, setCustomDraft] = useState<string | null>(null);
   const [nodeId, setNodeId] = useState<string | null>(null);
+  const keyMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!keyMenuOpen) return;
+    function onPointerDown(event: PointerEvent) {
+      const root = keyMenuRef.current;
+      if (root && event.target instanceof Node && !root.contains(event.target)) setKeyMenuOpen(false);
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [keyMenuOpen]);
+
   const nodes = useQuery({ queryKey: ["nodes", 1, ""], queryFn: () => listNodes({ page: 1, search: "" }) });
   const create = useMutation({
     mutationFn: createServer,
@@ -247,13 +271,74 @@ export function CreateServerPage() {
     create.mutate({
       name: name.trim(),
       node_id: nodeId,
-      image: {
-        os,
-        variant,
-        software,
-        openclaw_channels: openclawSelected ? channels : [],
+      config: {
+        image: os,
+        software: variant === "xcode" ? ["xcode", ...software] : [...software],
+        channels: openclawSelected ? channels : [],
+        env: openclawSelected ? cleanedEnv() : undefined,
       },
     });
+  }
+
+  const channelKeys: Array<{ id: string; label: string; note: string; placeholder: string }> = [
+    ...(channels.includes("telegram")
+      ? [{ id: "TELEGRAM_BOT_TOKEN", label: "Telegram bot token", note: "Telegram needs this", placeholder: "123456:ABC…" }]
+      : []),
+    ...(channels.includes("discord")
+      ? [{ id: "DISCORD_BOT_TOKEN", label: "Discord bot token", note: "Discord needs this", placeholder: "MTIz…" }]
+      : []),
+    ...(channels.includes("slack")
+      ? [
+          { id: "SLACK_BOT_TOKEN", label: "Slack bot token", note: "Slack needs this", placeholder: "xoxb-…" },
+          { id: "SLACK_APP_TOKEN", label: "Slack app token", note: "Slack needs this", placeholder: "xapp-…" },
+        ]
+      : []),
+  ];
+  const activeKeys = new Set([...channelKeys.map((key) => key.id), ...addedKeys]);
+  const availableProviders = PROVIDER_KEYS.filter((provider) => !activeKeys.has(provider.id));
+
+  function cleanedEnv(): Record<string, string> | undefined {
+    const entries = [...activeKeys]
+      .map((key) => [key, (envValues[key] ?? "").trim()] as const)
+      .filter(([, value]) => value !== "");
+    return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+  }
+
+  function setEnvValue(id: string, value: string) {
+    setEnvValues((current) => ({ ...current, [id]: value }));
+  }
+
+  function keyRow(id: string, label: string, meta: string, placeholder: string, removable: boolean) {
+    return (
+      <div className={styles.keyRow} key={id}>
+        <div className={styles.keyName}>
+          <span>{label}</span>
+          <code>{id}</code>
+        </div>
+        <input
+          className={styles.keyValue}
+          type="password"
+          value={envValues[id] ?? ""}
+          onChange={(event) => setEnvValue(id, event.target.value)}
+          placeholder={placeholder}
+          autoComplete="new-password"
+          spellCheck={false}
+          aria-label={label}
+        />
+        {removable ? (
+          <button
+            type="button"
+            className={styles.keyRemove}
+            aria-label={`Remove ${label}`}
+            onClick={() => setAddedKeys((current) => current.filter((key) => key !== id))}
+          >
+            ×
+          </button>
+        ) : (
+          <span className={styles.keyNote}>{meta}</span>
+        )}
+      </div>
+    );
   }
 
   const softwareNames = SOFTWARE.filter((item) => software.includes(item.id)).map((item) => item.name);
@@ -369,6 +454,94 @@ export function CreateServerPage() {
                             {channel.name}
                           </button>
                         ))}
+                      </div>
+                      <div className={styles.keyEditor}>
+                        <p className={styles.keyIntro}>
+                          Keys and variables, injected at boot. OpenClaw needs at least one model key
+                          to think with.
+                        </p>
+                        {channelKeys.map((key) => keyRow(key.id, key.label, key.note, key.placeholder, false))}
+                        {addedKeys.map((id) => {
+                          const provider = PROVIDER_KEYS.find((item) => item.id === id);
+                          return keyRow(id, provider?.name ?? id, "", provider?.placeholder ?? "", true);
+                        })}
+                        {customDraft !== null && (
+                          <div className={styles.keyRow}>
+                            <input
+                              className={styles.keyCustomName}
+                              value={customDraft}
+                              onChange={(event) =>
+                                setCustomDraft(event.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, "_"))
+                              }
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter" && customDraft.trim() !== "") {
+                                  setAddedKeys((current) => [...current, customDraft]);
+                                  setCustomDraft(null);
+                                }
+                                if (event.key === "Escape") setCustomDraft(null);
+                              }}
+                              placeholder="VARIABLE_NAME"
+                              autoFocus
+                              spellCheck={false}
+                              aria-label="Variable name"
+                            />
+                            <button
+                              type="button"
+                              className={styles.keyConfirm}
+                              disabled={customDraft.trim() === "" || activeKeys.has(customDraft)}
+                              onClick={() => {
+                                setAddedKeys((current) => [...current, customDraft]);
+                                setCustomDraft(null);
+                              }}
+                            >
+                              Add
+                            </button>
+                            <button type="button" className={styles.keyRemove} aria-label="Cancel" onClick={() => setCustomDraft(null)}>
+                              ×
+                            </button>
+                          </div>
+                        )}
+                        <div className={styles.keyAdd} ref={keyMenuRef}>
+                          <button
+                            type="button"
+                            className={styles.keyAddBtn}
+                            aria-haspopup="menu"
+                            aria-expanded={keyMenuOpen}
+                            onClick={() => setKeyMenuOpen((current) => !current)}
+                          >
+                            Add key
+                          </button>
+                          {keyMenuOpen && (
+                            <div className={styles.keyMenu} role="menu">
+                              {availableProviders.map((provider) => (
+                                <button
+                                  key={provider.id}
+                                  type="button"
+                                  role="menuitem"
+                                  className={styles.keyOpt}
+                                  onClick={() => {
+                                    setAddedKeys((current) => [...current, provider.id]);
+                                    setKeyMenuOpen(false);
+                                  }}
+                                >
+                                  <span>{provider.name}</span>
+                                  <code>{provider.id}</code>
+                                </button>
+                              ))}
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className={styles.keyOpt}
+                                onClick={() => {
+                                  setCustomDraft("");
+                                  setKeyMenuOpen(false);
+                                }}
+                              >
+                                <span>Custom variable</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   )}

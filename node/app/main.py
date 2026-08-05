@@ -1,8 +1,13 @@
 import asyncio
 import contextlib
+import fcntl
+import json
 import os
+import pty
 import shlex
+import struct
 import tempfile
+import termios
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, Path, UploadFile, WebSocket, WebSocketDisconnect
@@ -11,6 +16,21 @@ from pydantic import BaseModel, StringConstraints
 from . import config, lume, portable_snapshot
 
 app = FastAPI(title="Cider Node")
+
+
+@app.on_event("startup")
+async def watch_for_orphaning() -> None:
+    # If the connector that spawned this agent dies, exit and free the port
+    # so the next connector can bind it.
+    async def watchdog() -> None:
+        while True:
+            await asyncio.sleep(5)
+            if os.getppid() == 1:
+                print("[node] connector gone; exiting to free the port", flush=True)
+                os._exit(0)
+
+    asyncio.create_task(watchdog())
+
 
 SnapshotId = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{32}$")]
 
@@ -28,8 +48,12 @@ async def health() -> dict:
 
 @app.get("/sandboxes")
 async def list_sandboxes() -> list[dict]:
-    """Full snapshot of every VM on this node — the node is the source of truth."""
-    return [{"id": vm["name"], "status": vm["status"]} for vm in await lume.list_vms()]
+    """Full snapshot of every workload VM — the node is the source of truth."""
+    return [
+        {"id": vm["name"], "status": vm["status"]}
+        for vm in await lume.list_vms()
+        if vm["name"] != config.BASE_VM
+    ]
 
 
 class ExecuteInput(BaseModel):
@@ -179,29 +203,35 @@ async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
             raise HTTPException(500, str(e))
 
 
-async def websocket_to_process(
-    websocket: WebSocket,
-    process: asyncio.subprocess.Process,
-) -> None:
-    if process.stdin is None:
-        raise RuntimeError("SSH process stdin is unavailable")
+def _set_winsize(fd: int, rows: int, cols: int) -> None:
+    fcntl.ioctl(fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, cols, 0, 0))
+
+
+async def websocket_to_pty(websocket: WebSocket, master: int) -> None:
     while True:
         message = await websocket.receive()
         if message["type"] == "websocket.disconnect":
             return
-        if message.get("bytes") is None:
-            raise RuntimeError("SSH tunnels only accept binary frames")
-        process.stdin.write(message["bytes"])
-        await process.stdin.drain()
+        if message.get("bytes") is not None:
+            os.write(master, message["bytes"])
+        elif message.get("text") is not None:
+            # Control frames: {"resize": {"cols": int, "rows": int}}
+            with contextlib.suppress(Exception):
+                control = json.loads(message["text"])
+                resize = control.get("resize")
+                if resize:
+                    _set_winsize(master, int(resize["rows"]), int(resize["cols"]))
 
 
-async def process_to_websocket(
-    process: asyncio.subprocess.Process,
-    websocket: WebSocket,
-) -> None:
-    if process.stdout is None:
-        raise RuntimeError("SSH process stdout is unavailable")
-    while content := await process.stdout.read(64 * 1024):
+async def pty_to_websocket(master: int, websocket: WebSocket) -> None:
+    loop = asyncio.get_running_loop()
+    while True:
+        try:
+            content = await loop.run_in_executor(None, os.read, master, 64 * 1024)
+        except OSError:
+            return
+        if not content:
+            return
         await websocket.send_bytes(content)
 
 
@@ -212,6 +242,51 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
             await websocket.close(code=1008, reason="sandbox not found")
             return
         address = await lume.ip(sandbox_id)
+    except RuntimeError as error:
+        await websocket.close(code=1011, reason=str(error))
+        return
+
+    await websocket.accept()
+
+    # The first frame may be a control init carrying terminal size and TERM;
+    # a binary first frame is plain data from an init-less client.
+    # TERMs the stock macOS guest has terminfo for. Newer terminals (Ghostty,
+    # kitty, WezTerm) advertise entries the guest lacks, which degrades the
+    # remote line editor — those map to xterm-256color.
+    SAFE_TERMS = {"xterm", "xterm-256color", "screen", "screen-256color", "tmux", "tmux-256color", "vt100", "ansi"}
+    term = "xterm-256color"
+    rows, cols = 24, 80
+    initial_input = b""
+    with contextlib.suppress(TimeoutError, asyncio.TimeoutError):
+        first = await asyncio.wait_for(websocket.receive(), timeout=2)
+        if first["type"] == "websocket.disconnect":
+            return
+        if first.get("text") is not None:
+            with contextlib.suppress(Exception):
+                control = json.loads(first["text"])
+                requested = str(control.get("term") or term)
+                term = requested if requested in SAFE_TERMS else "xterm-256color"
+                resize = control.get("resize") or {}
+                rows = int(resize.get("rows") or rows)
+                cols = int(resize.get("cols") or cols)
+        elif first.get("bytes") is not None:
+            initial_input = first["bytes"]
+
+    print(f"[ssh] session {sandbox_id}: term={term} size={cols}x{rows} init={'control' if not initial_input else 'data'}", flush=True)
+    master, slave = pty.openpty()
+    _set_winsize(master, rows, cols)
+
+    def make_controlling_tty() -> None:
+        os.setsid()
+        # On BSD/macOS the first tty opened after setsid becomes the
+        # controlling terminal; failure only costs live-resize signals.
+        try:
+            fd = os.open(os.ttyname(0), os.O_RDWR)
+            os.close(fd)
+        except OSError:
+            pass
+
+    try:
         process = await asyncio.create_subprocess_exec(
             "ssh",
             *lume.SSH_OPTIONS,
@@ -219,17 +294,23 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
             "ConnectTimeout=10",
             "-tt",
             f"{config.SSH_USER}@{address}",
-            stdin=asyncio.subprocess.PIPE,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.STDOUT,
+            stdin=slave,
+            stdout=slave,
+            stderr=slave,
+            env={**os.environ, "TERM": term},
+            preexec_fn=make_controlling_tty,
         )
-    except RuntimeError as error:
+    except OSError as error:
+        os.close(master)
+        os.close(slave)
         await websocket.close(code=1011, reason=str(error))
         return
+    os.close(slave)
+    if initial_input:
+        os.write(master, initial_input)
 
-    await websocket.accept()
-    input_task = asyncio.create_task(websocket_to_process(websocket, process))
-    output_task = asyncio.create_task(process_to_websocket(process, websocket))
+    input_task = asyncio.create_task(websocket_to_pty(websocket, master))
+    output_task = asyncio.create_task(pty_to_websocket(master, websocket))
     wait_task = asyncio.create_task(process.wait())
     try:
         done, pending = await asyncio.wait(
@@ -246,8 +327,8 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
             ):
                 await task
     finally:
-        if process.stdin is not None:
-            process.stdin.close()
+        with contextlib.suppress(OSError):
+            os.close(master)
         if process.returncode is None:
             process.terminate()
             await process.wait()

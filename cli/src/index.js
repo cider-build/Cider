@@ -114,9 +114,9 @@ export async function run(argv) {
     });
 
   program
-    .command("ssh [sandbox]")
-    .description("SSH into a sandbox")
-    .option("-l, --list", "List available sandboxes")
+    .command("ssh [target]")
+    .description("SSH into a sandbox or a running server (by name)")
+    .option("-l, --list", "List available sandboxes and servers")
     .option("-n, --new [node]", "Create a sandbox, optionally on a node, then connect")
     .action(async (sandbox, options) => {
       await ssh(readConfig(), sandbox, options);

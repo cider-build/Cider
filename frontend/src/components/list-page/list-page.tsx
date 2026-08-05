@@ -32,6 +32,22 @@ export function Panel({ children }: { children: ReactNode }) {
 }
 
 /** Grey-ramp text-only status. No dots, no pills, no color. */
+export function Spinner({ size = 12 }: { size?: number }) {
+  return (
+    <svg
+      className={styles.spinner}
+      width={size}
+      height={size}
+      viewBox="0 0 16 16"
+      fill="none"
+      aria-hidden="true"
+    >
+      <circle cx="8" cy="8" r="6.5" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
+      <path d="M8 1.5a6.5 6.5 0 0 1 6.5 6.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function StatusText({ tone, children }: { tone: "ok" | "warm" | "gone"; children: ReactNode }) {
   return <span className={`${styles.st} ${styles[tone]}`}>{children}</span>;
 }

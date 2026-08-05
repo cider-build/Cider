@@ -5,10 +5,9 @@ from pydantic import BaseModel
 from sqlmodel import select
 
 from ..auth import AuthContext, current_auth_context
-from ..services import node_transport, warm_pool
-from ..services.node_gateway import node_gateway
+from ..services import node_transport, vm_lifecycle, warm_pool
 from ..db import get_session
-from ..models import Node, Sandbox, Snapshot
+from ..models import Sandbox, Snapshot
 from ..snapshot_store import blob_path, delete_manifest, read_manifest
 
 router = APIRouter(prefix="/snapshots")
@@ -94,41 +93,7 @@ async def restore_snapshot(
         if sandbox.status != "stopped":
             raise HTTPException(409, "sandbox is not stopped")
 
-        if body.node_id is not None:
-            node = db.get(Node, body.node_id)
-            if (
-                node is None
-                or node.org_id != snapshot.org_id
-                or not node_gateway.is_connected(node.id)
-            ):
-                raise HTTPException(404, "connected destination node not found")
-            candidates = [node]
-        else:
-            candidates = warm_pool.available_nodes(db, snapshot.org_id)
-            if not candidates:
-                raise HTTPException(404, "no connected destination nodes")
-
-        node = None
-        for candidate in candidates:
-            if warm_pool.node_has_vm_capacity(db, candidate):
-                node = candidate
-                break
-            warm = db.exec(
-                select(Sandbox).where(
-                    Sandbox.node_id == candidate.id,
-                    Sandbox.deleted_at.is_(None),
-                    Sandbox.status == "warm",
-                )
-            ).first()
-            if warm is not None:
-                await node_transport.request(candidate, "DELETE", f"/sandboxes/{warm.id}")
-                warm.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
-                db.add(warm)
-                db.commit()
-                node = candidate
-                break
-        if node is None:
-            raise HTTPException(429, "all destination nodes are at capacity")
+        node = await vm_lifecycle.find_capacity_node(db, snapshot.org_id, body.node_id)
 
         previous_node_id = sandbox.node_id
         node_id = node.id

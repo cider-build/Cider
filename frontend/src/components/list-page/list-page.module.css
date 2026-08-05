@@ -291,3 +291,13 @@
     gap: 14px;
   }
 }
+
+/* Activity, not decoration: a quiet arc that inherits the text color. */
+.spinner {
+  animation: spinner-rotate 800ms linear infinite;
+  display: inline-block;
+  vertical-align: -1px;
+}
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}

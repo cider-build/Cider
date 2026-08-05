@@ -270,9 +270,10 @@ async def delete_node(node_id: str, ctx: AuthContext = Depends(current_auth_cont
             raise HTTPException(404, "node not found")
 
         servers = db.exec(select(Server).where(Server.node_id == node_id, Server.deleted_at.is_(None))).all()
-        if servers:
-            # A server's disk lives on this node; removing the node would strand it.
-            raise HTTPException(409, "node has servers; delete them first")
+        if any(server.status in ("running", "provisioning") for server in servers):
+            # A live server's disk sits on this node; removing it would strand the server.
+            # Stopped servers live in Cider storage and survive the node.
+            raise HTTPException(409, "node has running servers; stop or delete them first")
 
         sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
         if node_gateway.is_connected(node_id) and any(

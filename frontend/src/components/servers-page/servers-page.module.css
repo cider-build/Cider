@@ -111,3 +111,10 @@
   border-color: #e2aaa4;
   color: #b42318;
 }
+
+.statusCell {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 7px;
+}

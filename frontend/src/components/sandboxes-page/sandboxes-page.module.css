@@ -254,3 +254,10 @@
   font-size: 13px;
   margin: 0 0 10px;
 }
+
+.statusCell {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 7px;
+}

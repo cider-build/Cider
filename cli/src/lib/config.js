@@ -5,7 +5,8 @@ import { dirname, join } from "node:path";
 
 export const CIDER_HOME = process.env.CIDER_HOME || join(homedir(), ".cider");
 const CONFIG_PATH = join(CIDER_HOME, "config.json");
-export const NODE_URL = process.env.CIDER_NODE_URL || "http://127.0.0.1:8001";
+export const NODE_PORT = process.env.CIDER_NODE_PORT || "8001";
+export const NODE_URL = process.env.CIDER_NODE_URL || `http://127.0.0.1:${NODE_PORT}`;
 
 function parseJson(path) {
   const value = JSON.parse(readFileSync(path, "utf8"));

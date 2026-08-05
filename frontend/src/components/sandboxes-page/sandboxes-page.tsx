@@ -11,6 +11,7 @@ import {
   Panel,
   RailHero,
   RailSection,
+  Spinner,
   StatusText,
 } from "../list-page/list-page";
 import { PageHeader } from "../page-header/page-header";
@@ -42,7 +43,7 @@ const gbFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
 const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Known backend statuses, in display order; unknown statuses sort last. */
-const STATUS_ORDER = ["active", "paused", "provisioning", "restoring", "warm", "stopped", "deleted"];
+const STATUS_ORDER = ["active", "paused", "pausing", "provisioning", "restoring", "warm", "stopped", "deleted"];
 
 function displayStatus(sandbox: Sandbox): string {
   return sandbox.deleted_at != null ? "deleted" : sandbox.status;
@@ -50,7 +51,7 @@ function displayStatus(sandbox: Sandbox): string {
 
 function statusTone(status: string): "ok" | "warm" | "gone" {
   if (status === "active" || status === "running") return "ok";
-  if (status === "warm" || status === "paused" || status === "stopped") return "warm";
+  if (status === "warm" || status === "paused" || status === "pausing" || status === "stopped") return "warm";
   if (status === "provisioning" || status === "restoring") return "warm";
   return "gone";
 }
@@ -199,13 +200,26 @@ function sortByStatusOrder(a: string, b: string): number {
 
 export function SandboxesPage() {
   const queryClient = useQueryClient();
-  const sandboxes = useQuery({ queryKey: ["sandboxes"], queryFn: listSandboxes });
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["sandboxes"] });
   const remove = useMutation({ mutationFn: deleteSandbox, onSuccess: refresh });
   const pause = useMutation({ mutationFn: pauseSandbox, onSuccess: refresh });
   const resume = useMutation({ mutationFn: resumeSandbox, onSuccess: refresh });
   const actionError = pause.error ?? resume.error ?? remove.error;
   const actionPending = pause.isPending || resume.isPending || remove.isPending;
+  const sandboxes = useQuery({
+    queryKey: ["sandboxes"],
+    queryFn: listSandboxes,
+    // Transient states resolve server-side; poll until they settle. Also
+    // poll while an action request is in flight, so the transient status
+    // becomes visible without waiting for it to already be visible.
+    refetchInterval: (query) =>
+      actionPending ||
+      query.state.data?.some(
+        (sandbox) => sandbox.deleted_at == null && ["pausing", "restoring", "provisioning"].includes(sandbox.status),
+      )
+        ? 2000
+        : false,
+  });
   const nodes = useQuery({ queryKey: ["nodes", "all-pages"], queryFn: listAllNodes });
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
@@ -326,8 +340,13 @@ export function SandboxesPage() {
                       <div className={`${listClasses.name} ${styles.mono}`}>{sandbox.id}</div>
                       <div className={listClasses.cell}>{sandbox.node_name}</div>
                       <div className={listClasses.cell}>{allocation(sandbox)}</div>
-                      <div>
+                      <div className={styles.statusCell}>
                         <StatusText tone={statusTone(state)}>{statusLabel(state)}</StatusText>
+                        {(["pausing", "restoring", "provisioning"].includes(state) ||
+                          (actionPending &&
+                            (pause.variables === sandbox.id ||
+                              resume.variables === sandbox.id ||
+                              remove.variables === sandbox.id))) && <Spinner />}
                       </div>
                       <div className={listClasses.cell}>{formatCreated(sandbox.created_at)}</div>
                       <div className={styles.acts}>
@@ -341,7 +360,7 @@ export function SandboxesPage() {
                             disabled={actionPending}
                             onClick={() => pause.mutate(sandbox.id)}
                           >
-                            {ICON_PAUSE}
+                            {pause.isPending && pause.variables === sandbox.id ? <Spinner size={10} /> : ICON_PAUSE}
                           </button>
                         )}
                         {state === "paused" && (
@@ -354,7 +373,7 @@ export function SandboxesPage() {
                             disabled={actionPending}
                             onClick={() => resume.mutate(sandbox.id)}
                           >
-                            {ICON_PLAY}
+                            {resume.isPending && resume.variables === sandbox.id ? <Spinner size={10} /> : ICON_PLAY}
                           </button>
                         )}
                         {sandbox.deleted_at == null && (

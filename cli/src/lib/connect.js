@@ -9,6 +9,7 @@ import { promisify } from "node:util";
 import { ApiError, makeClient } from "./api.js";
 import {
   CIDER_HOME,
+  NODE_PORT,
   NODE_URL,
   readConfig,
   readNodeState,
@@ -189,7 +190,7 @@ async function startNodeService(command, config, node, baseImageIdPath, imageRef
       CIDER_API_URL: config.apiUrl,
       CIDER_NODE_ID: node.id,
       CIDER_NODE_TOKEN: node.token,
-      CIDER_NODE_PORT: "8001",
+      CIDER_NODE_PORT: NODE_PORT,
       CIDER_SSH_KEY: SSH_KEY_PATH,
       CIDER_SSH_USER: SSH_USER,
       CIDER_VM_STORAGE: VM_STORAGE,
@@ -197,6 +198,12 @@ async function startNodeService(command, config, node, baseImageIdPath, imageRef
     },
     stdio: ["ignore", "inherit", "inherit"],
   });
+  // A killed connector must not orphan the agent on its port.
+  const onSignal = () => {
+    stopNodeService(child).finally(() => process.exit(0));
+  };
+  process.once("SIGTERM", onSignal);
+  process.once("SIGINT", onSignal);
   try {
     await new Promise((resolve, reject) => {
       const deadline = Date.now() + 30_000;

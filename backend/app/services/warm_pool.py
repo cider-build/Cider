@@ -102,12 +102,21 @@ def claim_vm_for_server(org_id: str, node_id: str | None = None):
                 )
             ).first()
             if warm is not None:
+                vm_id = warm.id
                 warm.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
                 db.add(warm)
                 db.commit()
-                return node, warm.id
+                # The commit expires loaded attributes; reload before the
+                # session closes so the caller gets a usable instance.
+                db.refresh(node)
+                db.expunge(node)
+                return node, vm_id
         for node in nodes:
             if node_has_vm_capacity(db, node):
+                # Reserve the slot: a cold-booting server must not lose it to
+                # a warm-pool refill. The provisioner releases the reservation.
+                warming[node.id] += 1
+                db.expunge(node)
                 return node, None
         raise HTTPException(429, "all nodes are at their configured VM capacity")
 

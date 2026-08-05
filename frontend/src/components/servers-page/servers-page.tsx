@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { deleteServer, listServers, startServer, stopServer } from "../../api";
-import type { Server, ServerImageSelection } from "../../api";
+import { deleteServer, listServers, retryServer, startServer, stopServer } from "../../api";
+import type { Server, ServerConfig } from "../../api";
 import { OPENCLAW_CHANNELS, OS_RELEASES, SOFTWARE } from "../../image-catalog";
 import { Button } from "../button/button";
 import {
@@ -14,6 +14,7 @@ import {
   Panel,
   RailHero,
   RailSection,
+  Spinner,
   StatusText,
 } from "../list-page/list-page";
 import { PageHeader } from "../page-header/page-header";
@@ -47,6 +48,12 @@ const ICON_PLAY = (
     <path d="M2.2 1.06c0-.72.78-1.17 1.4-.8l6.55 3.94c.6.36.6 1.24 0 1.6L3.6 9.74a.93.93 0 0 1-1.4-.8z" />
   </svg>
 );
+const ICON_RETRY = (
+  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+    <path d="M21 3v6h-6" />
+  </svg>
+);
 const ICON_TRASH = (
   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <path d="M3 6h18" />
@@ -59,15 +66,16 @@ function createdAt(value: string) {
   return new Date(value).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function macosLabel(image: ServerImageSelection | null) {
-  if (!image) return "—";
-  const release = OS_RELEASES.find((item) => item.id === image.os);
-  return release ? `${release.version} ${release.name}` : image.os;
+function macosLabel(config: ServerConfig | null) {
+  if (!config) return "—";
+  const release = OS_RELEASES.find((item) => item.id === config.image);
+  return release ? `${release.version} ${release.name}` : config.image;
 }
 
 function serverStatus(status: string): { tone: "ok" | "warm" | "gone"; label: string } {
   if (status === "running") return { tone: "ok", label: "Running" };
   if (status === "provisioning") return { tone: "warm", label: "Provisioning" };
+  if (status === "stopping") return { tone: "warm", label: "Stopping" };
   if (status === "stopped") return { tone: "warm", label: "Stopped" };
   if (status === "failed") return { tone: "gone", label: "Failed" };
   return { tone: "warm", label: status.charAt(0).toUpperCase() + status.slice(1) };
@@ -76,13 +84,13 @@ function serverStatus(status: string): { tone: "ok" | "warm" | "gone"; label: st
 /* L's .applogos cell: brand icons only, a hairline separator before OpenClaw
    channels. "Clean macOS" when the image ships nothing. WebChat has no brand
    mark, so it never renders an icon. */
-function SoftwareCell({ image }: { image: ServerImageSelection | null }) {
-  if (!image) return <div className={listClasses.cell}>—</div>;
+function SoftwareCell({ config }: { config: ServerConfig | null }) {
+  if (!config) return <div className={listClasses.cell}>—</div>;
   const apps = [];
-  if (image.variant === "xcode") {
+  if (config.software.includes("xcode")) {
     apps.push(<img key="xcode" className={styles.xcode} src={XCODE_LOGO} alt="Xcode" title="Xcode" />);
   }
-  for (const id of image.software) {
+  for (const id of config.software.filter((item) => item !== "xcode")) {
     const name = SOFTWARE.find((item) => item.id === id)?.name ?? id;
     if (id === "openclaw") {
       apps.push(<span key={id} className={styles.emoji} title={name}>🦞</span>);
@@ -92,7 +100,7 @@ function SoftwareCell({ image }: { image: ServerImageSelection | null }) {
     }
   }
   if (apps.length === 0) return <div className={listClasses.cell}>Clean macOS</div>;
-  const channels = image.openclaw_channels.filter((id) => CHANNEL_LOGOS[id] !== undefined);
+  const channels = config.channels.filter((id) => CHANNEL_LOGOS[id] !== undefined);
   return (
     <div className={styles.applogos}>
       {apps}
@@ -109,28 +117,37 @@ export function ServersPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(0);
-  const servers = useQuery({
-    queryKey: ["servers"],
-    queryFn: listServers,
-    // A provisioning row resolves server-side; poll until it settles.
-    refetchInterval: (query) =>
-      query.state.data?.some((server) => server.status === "provisioning") ? 2000 : false,
-  });
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["servers"] });
   };
   const stop = useMutation({ mutationFn: stopServer, onSuccess: refresh });
   const start = useMutation({ mutationFn: startServer, onSuccess: refresh });
   const remove = useMutation({ mutationFn: deleteServer, onSuccess: refresh });
-  const actionError = stop.error ?? start.error ?? remove.error;
-  const actionPending = stop.isPending || start.isPending || remove.isPending;
+  const retry = useMutation({ mutationFn: retryServer, onSuccess: refresh });
+  const actionError = stop.error ?? start.error ?? remove.error ?? retry.error;
+  const actionPending = stop.isPending || start.isPending || remove.isPending || retry.isPending;
+  const servers = useQuery({
+    queryKey: ["servers"],
+    queryFn: listServers,
+    // A provisioning row resolves server-side; poll until it settles. Also
+    // poll while any action request is in flight — the transient status only
+    // becomes visible through a refetch, so waiting for it to appear first
+    // would never start the polling.
+    refetchInterval: (query) =>
+      actionPending ||
+      query.state.data?.some((server) => server.status === "provisioning" || server.status === "stopping")
+        ? 2000
+        : false,
+  });
   const busyId = stop.isPending
     ? stop.variables
     : start.isPending
       ? start.variables
       : remove.isPending
         ? remove.variables
-        : null;
+        : retry.isPending
+          ? retry.variables
+          : null;
 
   const header = (
     <PageHeader
@@ -188,6 +205,19 @@ export function ServersPage() {
     const busy = busyId === server.id;
     return (
       <div className={styles.acts}>
+        {server.status === "failed" && (
+          <button
+            type="button"
+            className={styles.btnIc}
+            aria-label={`Retry ${server.name}`}
+            aria-busy={busy && retry.isPending}
+            title="Retry provisioning"
+            disabled={actionPending}
+            onClick={() => retry.mutate(server.id)}
+          >
+            {busy && retry.isPending ? <Spinner size={10} /> : ICON_RETRY}
+          </button>
+        )}
         {server.status === "running" ? (
           <button
             type="button"
@@ -198,7 +228,7 @@ export function ServersPage() {
             disabled={actionPending}
             onClick={() => stop.mutate(server.id)}
           >
-            {ICON_STOP}
+            {busy && stop.isPending ? <Spinner size={10} /> : ICON_STOP}
           </button>
         ) : (
           <button
@@ -210,7 +240,7 @@ export function ServersPage() {
             disabled={actionPending || server.status !== "stopped"}
             onClick={() => start.mutate(server.id)}
           >
-            {ICON_PLAY}
+            {busy && start.isPending ? <Spinner size={10} /> : ICON_PLAY}
           </button>
         )}
         <button
@@ -272,11 +302,16 @@ export function ServersPage() {
                   <div className={`${listClasses.row} ${styles.cols}`} key={server.id}>
                     <div className={listClasses.name}>{server.name}</div>
                     <div className={listClasses.cell}>{server.node_name}</div>
-                    <div className={listClasses.cell}>{macosLabel(server.image)}</div>
-                    <SoftwareCell image={server.image} />
+                    <div className={listClasses.cell}>{macosLabel(server.config)}</div>
+                    <SoftwareCell config={server.config} />
                     <div className={listClasses.cell}>{createdAt(server.created_at)}</div>
                     <div>
-                      <StatusText tone={status.tone}>{status.label}</StatusText>
+                      <span className={styles.statusCell} title={server.status_detail ?? undefined}>
+                        <StatusText tone={status.tone}>{status.label}</StatusText>
+                        {(server.status === "provisioning" || server.status === "stopping" || busyId === server.id) && (
+                          <Spinner />
+                        )}
+                      </span>
                     </div>
                     {rowActions(server)}
                   </div>
