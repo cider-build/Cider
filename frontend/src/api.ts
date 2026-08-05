@@ -29,7 +29,14 @@ export type Node = {
   configuration: NodeConfiguration | null;
 };
 export type NodePage = { items: Node[]; page: number; pages: number; total: number };
-export type Sandbox = { id: string; node_id: string; node_name: string; status: string; created_at: string; deleted_at: string | null };
+export type Sandbox = {
+  id: string;
+  node_id: string;
+  node_name: string;
+  status: string;
+  created_at: string;
+  deleted_at: string | null;
+};
 export type ServerConfig = {
   image: string;
   software: string[];
@@ -38,11 +45,7 @@ export type ServerConfig = {
   setup?: string | string[] | null;
   start?: string | null;
 };
-export type CreateServerInput = {
-  name: string;
-  node_id: string | null;
-  config: ServerConfig;
-};
+export type CreateServerInput = { name: string; node_id: string | null; config: ServerConfig };
 export type Server = {
   id: string;
   name: string;
@@ -62,160 +65,68 @@ export type Snapshot = {
   size_bytes: number | null;
 };
 
+type RequestOptions = { method?: string; json?: unknown };
+
+async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  const response = await fetch(`${API_URL}${path}`, {
+    method: options.method,
+    credentials: "include",
+    headers: options.json === undefined ? undefined : { "content-type": "application/json" },
+    body: options.json === undefined ? undefined : JSON.stringify(options.json),
+  });
+  if (!response.ok) {
+    const body: { detail: string } = await response.json();
+    throw new Error(body.detail);
+  }
+  return response.status === 204 ? (undefined as T) : response.json();
+}
+
 export async function me(): Promise<AuthOut | null> {
   const response = await fetch(`${API_URL}/auth/me`, { credentials: "include" });
   if (response.status === 401) return null;
-  if (!response.ok) throw new Error(await response.text());
-  return await response.json();
-}
-
-export async function signup(body: SignupInput): Promise<AuthOut> {
-  const response = await fetch(`${API_URL}/auth/signup`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return await response.json();
-}
-
-export async function login(body: LoginInput): Promise<AuthOut> {
-  const response = await fetch(`${API_URL}/auth/login`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!response.ok) throw new Error(await response.text());
-  return await response.json();
-}
-
-export async function logout(): Promise<void> {
-  const response = await fetch(`${API_URL}/auth/logout`, { method: "POST", credentials: "include" });
-  if (!response.ok) throw new Error(await response.text());
-}
-
-export async function listNodes({ page, search }: { page: number; search: string }): Promise<NodePage> {
-  const params = new URLSearchParams({ page: String(page), search });
-  const response = await fetch(`${API_URL}/nodes?${params}`, { credentials: "include" });
-  if (!response.ok) throw new Error(await response.text());
-  return await response.json();
-}
-
-export async function getNode(id: string): Promise<Node> {
-  const response = await fetch(`${API_URL}/nodes/${id}`, { credentials: "include" });
-  if (!response.ok) throw new Error(await response.text());
-  return await response.json();
-}
-
-export async function deleteNode(id: string): Promise<void> {
-  const response = await fetch(`${API_URL}/nodes/${id}`, { method: "DELETE", credentials: "include" });
-  if (!response.ok) throw new Error(await response.text());
-}
-
-export async function updateNodeConfiguration(id: string, configuration: NodeConfiguration): Promise<Node> {
-  const response = await fetch(`${API_URL}/nodes/${id}/configuration`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(configuration),
-  });
   if (!response.ok) {
-    const body = await response.json();
-    throw new Error(typeof body.detail === "string" ? body.detail : "Could not save node configuration");
+    const body: { detail: string } = await response.json();
+    throw new Error(body.detail);
   }
-  return await response.json();
+  return response.json();
 }
 
-async function requireOk(response: Response): Promise<Response> {
-  if (response.ok) return response;
-  const text = await response.text();
-  try {
-    const detail = JSON.parse(text).detail;
-    throw new Error(typeof detail === "string" ? detail : text);
-  } catch (error) {
-    if (error instanceof SyntaxError) throw new Error(text);
-    throw error;
-  }
+export const signup = (body: SignupInput) => request<AuthOut>("/auth/signup", { method: "POST", json: body });
+export const login = (body: LoginInput) => request<AuthOut>("/auth/login", { method: "POST", json: body });
+export const logout = () => request<void>("/auth/logout", { method: "POST" });
+
+export function listNodes({ page, search }: { page: number; search: string }): Promise<NodePage> {
+  const params = new URLSearchParams({ page: String(page), search });
+  return request(`/nodes?${params}`);
 }
 
-/** Includes tombstoned rows — deletion history feeds the rail sparkline. */
-export async function listServers(): Promise<Server[]> {
-  const response = await requireOk(await fetch(`${API_URL}/servers?include_deleted=true`, { credentials: "include" }));
-  return await response.json();
+export async function listAllNodes(): Promise<Node[]> {
+  const first = await listNodes({ page: 1, search: "" });
+  const rest = await Promise.all(
+    Array.from({ length: first.pages - 1 }, (_, index) => listNodes({ page: index + 2, search: "" })),
+  );
+  return [first, ...rest].flatMap((page) => page.items);
 }
 
-export async function createServer(body: CreateServerInput): Promise<Server> {
-  const response = await requireOk(await fetch(`${API_URL}/servers`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  }));
-  return await response.json();
-}
+export const getNode = (id: string) => request<Node>(`/nodes/${id}`);
+export const deleteNode = (id: string) => request<void>(`/nodes/${id}`, { method: "DELETE" });
+export const updateNodeConfiguration = (id: string, configuration: NodeConfiguration) =>
+  request<Node>(`/nodes/${id}/configuration`, { method: "PATCH", json: configuration });
 
-export async function stopServer(id: string): Promise<Server> {
-  const response = await requireOk(await fetch(`${API_URL}/servers/${id}/stop`, { method: "POST", credentials: "include" }));
-  return await response.json();
-}
+export const listServers = () => request<Server[]>("/servers?include_deleted=true");
+export const createServer = (body: CreateServerInput) => request<Server>("/servers", { method: "POST", json: body });
+export const stopServer = (id: string) => request<Server>(`/servers/${id}/stop`, { method: "POST" });
+export const startServer = (id: string) => request<Server>(`/servers/${id}/start`, { method: "POST" });
+export const retryServer = (id: string) => request<Server>(`/servers/${id}/retry`, { method: "POST" });
+export const deleteServer = (id: string) => request<void>(`/servers/${id}`, { method: "DELETE" });
 
-export async function startServer(id: string): Promise<Server> {
-  const response = await requireOk(await fetch(`${API_URL}/servers/${id}/start`, { method: "POST", credentials: "include" }));
-  return await response.json();
-}
+export const listSnapshots = () => request<Snapshot[]>("/snapshots?include_deleted=true");
+export const restoreSnapshot = (id: string) =>
+  request<Sandbox>(`/snapshots/${id}/restore`, { method: "POST", json: {} });
+export const deleteSnapshot = (id: string) => request<void>(`/snapshots/${id}`, { method: "DELETE" });
 
-export async function retryServer(id: string): Promise<Server> {
-  const response = await requireOk(await fetch(`${API_URL}/servers/${id}/retry`, { method: "POST", credentials: "include" }));
-  return await response.json();
-}
-
-export async function deleteServer(id: string): Promise<void> {
-  await requireOk(await fetch(`${API_URL}/servers/${id}`, { method: "DELETE", credentials: "include" }));
-}
-
-/** Includes tombstoned rows — deletion history feeds the rail sparkline. */
-export async function listSnapshots(): Promise<Snapshot[]> {
-  const response = await requireOk(await fetch(`${API_URL}/snapshots?include_deleted=true`, { credentials: "include" }));
-  return await response.json();
-}
-
-export async function restoreSnapshot(id: string): Promise<Sandbox> {
-  const response = await requireOk(await fetch(`${API_URL}/snapshots/${id}/restore`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({}),
-  }));
-  return await response.json();
-}
-
-export async function deleteSnapshot(id: string): Promise<void> {
-  await requireOk(await fetch(`${API_URL}/snapshots/${id}`, { method: "DELETE", credentials: "include" }));
-}
-
-export async function pauseSandbox(id: string): Promise<Sandbox> {
-  const response = await requireOk(await fetch(`${API_URL}/sandboxes/${id}/pause`, { method: "POST", credentials: "include" }));
-  return await response.json();
-}
-
-export async function resumeSandbox(id: string): Promise<Sandbox> {
-  const response = await requireOk(await fetch(`${API_URL}/sandboxes/${id}/resume`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({}),
-  }));
-  return await response.json();
-}
-
-export async function deleteSandbox(id: string): Promise<void> {
-  await requireOk(await fetch(`${API_URL}/sandboxes/${id}`, { method: "DELETE", credentials: "include" }));
-}
-
-export async function listSandboxes(): Promise<Sandbox[]> {
-  const response = await fetch(`${API_URL}/sandboxes`, { credentials: "include" });
-  if (!response.ok) throw new Error(await response.text());
-  return await response.json();
-}
+export const pauseSandbox = (id: string) => request<Sandbox>(`/sandboxes/${id}/pause`, { method: "POST" });
+export const resumeSandbox = (id: string) =>
+  request<Sandbox>(`/sandboxes/${id}/resume`, { method: "POST", json: {} });
+export const deleteSandbox = (id: string) => request<void>(`/sandboxes/${id}`, { method: "DELETE" });
+export const listSandboxes = () => request<Sandbox[]>("/sandboxes");

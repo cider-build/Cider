@@ -10,19 +10,7 @@ import { makeClient } from "./lib/api.js";
 import { readConfig } from "./lib/config.js";
 import { connect } from "./lib/connect.js";
 import { resolveNode, ssh } from "./lib/ssh.js";
-
-function printRows(rows, columns) {
-  if (rows.length === 0) return;
-  const widths = columns.map((column) =>
-    Math.max(column.length, ...rows.map((row) => String(row[column] ?? "").length)),
-  );
-  process.stdout.write(columns.map((column, i) => column.padEnd(widths[i])).join("  ") + "\n");
-  for (const row of rows) {
-    process.stdout.write(
-      columns.map((column, i) => String(row[column] ?? "").padEnd(widths[i])).join("  ") + "\n",
-    );
-  }
-}
+import { printTable } from "./lib/table.js";
 
 function client() {
   return makeClient(readConfig());
@@ -30,17 +18,11 @@ function client() {
 
 const exec = promisify(execFile);
 
-async function gitFiles(dir) {
-  try {
-    const { stdout } = await exec("git", ["-C", dir, "ls-files", "-z", "--cached", "--modified", "--others", "--exclude-standard", "--", "."], { encoding: "buffer", maxBuffer: 1024 * 1024 * 100 });
-    return stdout.toString("utf8").split("\0").filter(Boolean);
-  } catch {
-    return null;
-  }
-}
-
-async function gitFilesIncludingIgnored(dir) {
-  const { stdout } = await exec("git", ["-C", dir, "ls-files", "-z", "--cached", "--modified", "--others", "--", "."], { encoding: "buffer", maxBuffer: 1024 * 1024 * 100 });
+async function gitFiles(dir, includeIgnored) {
+  const args = ["-C", dir, "ls-files", "-z", "--cached", "--modified", "--others"];
+  if (!includeIgnored) args.push("--exclude-standard");
+  args.push("--", ".");
+  const { stdout } = await exec("git", args, { encoding: "buffer", maxBuffer: 1024 * 1024 * 100 });
   return stdout.toString("utf8").split("\0").filter(Boolean);
 }
 
@@ -51,12 +33,10 @@ async function archivePath(path, includeIgnored = false) {
   const tmp = await mkdtemp(join(tmpdir(), "cider-"));
   const file = join(tmp, "repo.tgz");
   try {
-    const files = includeIgnored
-      ? await gitFilesIncludingIgnored(dir)
-      : await gitFiles(dir);
+    const files = await gitFiles(dir, includeIgnored);
     await tar.c(
       { cwd: parent, file, gzip: true, portable: true },
-      files ? files.map((path) => `${root}/${path}`) : [root],
+      files.map((path) => `${root}/${path}`),
     );
     return { file, tmp };
   } catch (error) {
@@ -89,15 +69,13 @@ export async function run(argv) {
     .description("List nodes")
     .action(async () => {
       const rows = await client().listNodes();
-      printRows(rows, ["id", "name", "connected"]);
+      printTable(rows, ["id", "name", "connected"]);
     });
 
   nodes
     .command("delete <id>")
     .description("Remove a node and revoke its credential")
-    .action(async (id) => {
-      await client().deleteNode(id);
-    });
+    .action((id) => client().deleteNode(id));
 
   program
     .command("open [path]")
@@ -118,9 +96,7 @@ export async function run(argv) {
     .description("SSH into a sandbox or a running server (by name)")
     .option("-l, --list", "List available sandboxes and servers")
     .option("-n, --new [node]", "Create a sandbox, optionally on a node, then connect")
-    .action(async (sandbox, options) => {
-      await ssh(readConfig(), sandbox, options);
-    });
+    .action((sandbox, options) => ssh(readConfig(), sandbox, options));
 
   const sandboxes = program.command("sandboxes").description("Manage sandboxes");
 
@@ -129,7 +105,7 @@ export async function run(argv) {
     .description("List sandboxes")
     .action(async () => {
       const rows = await client().listSandboxes();
-      printRows(rows, ["id", "node_id", "status", "created_at"]);
+      printTable(rows, ["id", "node_id", "status", "created_at"]);
     });
 
   sandboxes
@@ -178,9 +154,7 @@ export async function run(argv) {
   sandboxes
     .command("delete <id>")
     .description("Delete a sandbox")
-    .action(async (id) => {
-      await client().deleteSandbox(id);
-    });
+    .action((id) => client().deleteSandbox(id));
 
   const snapshots = program.command("snapshots").description("Manage snapshots");
 
@@ -189,7 +163,7 @@ export async function run(argv) {
     .description("List snapshots")
     .action(async () => {
       const rows = await client().listSnapshots();
-      printRows(rows, ["id", "source_sandbox_id", "created_at"]);
+      printTable(rows, ["id", "source_sandbox_id", "created_at"]);
     });
 
   snapshots
@@ -204,9 +178,7 @@ export async function run(argv) {
   snapshots
     .command("delete <id>")
     .description("Delete a snapshot")
-    .action(async (id) => {
-      await client().deleteSnapshot(id);
-    });
+    .action((id) => client().deleteSnapshot(id));
 
   await program.parseAsync(argv);
 }

@@ -69,7 +69,6 @@
   color: var(--faint);
 }
 
-/* ---------- macOS cards ---------- */
 .osGrid {
   display: grid;
   gap: 10px;
@@ -120,7 +119,6 @@
   font-size: 12px;
 }
 
-/* ---------- variant rows ---------- */
 .rowList {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -198,7 +196,6 @@
   transform: translate(-1px, -1px);
 }
 
-/* ---------- software rows ---------- */
 .softList {
   border: 1px solid var(--line-strong);
   border-radius: 10px;
@@ -288,7 +285,6 @@
   transform: translate(-1px, -1px);
 }
 
-/* ---------- OpenClaw channels ---------- */
 .chanSub {
   background: var(--bg);
   padding: 12px 14px 14px 51px;
@@ -340,7 +336,6 @@
   transform: translate(-1px, -1px);
 }
 
-/* ---------- node picker ---------- */
 .nodeSelect {
   margin-top: 14px;
   position: relative;
@@ -516,7 +511,6 @@
   text-align: center;
 }
 
-/* ---------- live summary ---------- */
 .stage {
   position: sticky;
   top: 20px;
@@ -601,7 +595,6 @@
   }
 }
 
-/* Key editor: nothing until you add a key; rows read as a quiet ledger. */
 .keyEditor {
   margin-top: 14px;
 }

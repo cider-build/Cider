@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from . import config
+from .errors import NodeOperationError
 
 SSH_OPTIONS = [
     "-i", config.SSH_KEY,
@@ -17,15 +18,16 @@ SSH_OPTIONS = [
 ]
 
 
-async def run(*args: str, check: bool = True) -> str:
+async def run(*args: str, check: bool = True, **kwargs) -> str:
     proc = await asyncio.create_subprocess_exec(
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        **kwargs,
     )
     stdout, stderr = await proc.communicate()
     if check and proc.returncode != 0:
-        raise RuntimeError(stderr.decode().strip() or stdout.decode().strip())
+        raise NodeOperationError(stderr.decode().strip() or stdout.decode().strip())
     return stdout.decode()
 
 
@@ -34,8 +36,8 @@ async def lume(*args: str, check: bool = True) -> str:
 
 
 async def start(name: str) -> None:
-    # `lume run` owns the VM for its whole lifetime, so it stays detached; stderr goes to
-    # an unlinked temp file (never a pipe, which would block the VM once full).
+    # Detach because lume run must own the VM after this request returns.
+    # Use a file because an unread stderr pipe can block the process.
     log = tempfile.NamedTemporaryFile(prefix="cider-lume-run-", suffix=".log", delete=False)
     try:
         with log:
@@ -48,7 +50,7 @@ async def start(name: str) -> None:
             )
     except OSError as error:
         os.unlink(log.name)
-        raise RuntimeError(f"could not launch lume run for {name}: {error}")
+        raise NodeOperationError(f"could not launch lume run for {name}: {error}")
 
     try:
         deadline = asyncio.get_running_loop().time() + config.START_TIMEOUT_SECONDS
@@ -57,18 +59,17 @@ async def start(name: str) -> None:
             if code is not None:
                 with open(log.name) as file:
                     detail = file.read().strip()
-                raise RuntimeError(
+                raise NodeOperationError(
                     f"lume run for {name} exited during startup ({code})" + (f": {detail}" if detail else "")
                 )
             vm = await find(name)
             if vm is not None and vm["status"] == "running":
                 return
             if asyncio.get_running_loop().time() >= deadline:
-                raise RuntimeError(f"VM {name} did not reach running within {config.START_TIMEOUT_SECONDS} seconds")
+                raise NodeOperationError(f"VM {name} did not reach running within {config.START_TIMEOUT_SECONDS} seconds")
             await asyncio.sleep(1)
     except BaseException:
-        # Any exit before verified running — including status-lookup failures and
-        # cancellation — must not leave the launched VM owner running unreported.
+        # Stop the owner process unless the VM reached a verified running state.
         if process.poll() is None:
             process.kill()
             process.wait()
@@ -78,9 +79,7 @@ async def start(name: str) -> None:
 
 
 async def list_vms() -> list[dict]:
-    # Existence is decided by listing the storage and matching names: `lume get` exits
-    # nonzero for both "not found" and operational failures, with no machine-readable
-    # discrimination, while a failing `lume ls` here propagates as an explicit error.
+    # lume get uses the same exit status for missing VMs and operational failures.
     return json.loads(await lume("ls", "-f", "json"))
 
 
@@ -94,7 +93,7 @@ async def find(name: str) -> dict | None:
 async def details(name: str) -> dict:
     found = await find(name)
     if found is None:
-        raise RuntimeError(f"VM not found: {name}")
+        raise NodeOperationError(f"VM not found: {name}")
     return found
 
 
@@ -105,39 +104,39 @@ async def ip(name: str) -> str:
         if address:
             return address
         if asyncio.get_running_loop().time() >= deadline:
-            raise RuntimeError(f"VM {name} did not report an IP within {config.START_TIMEOUT_SECONDS} seconds")
+            raise NodeOperationError(f"VM {name} did not report an IP within {config.START_TIMEOUT_SECONDS} seconds")
         await asyncio.sleep(2)
 
 
-async def clone(source: str, destination: str) -> None:
+async def copy(action: str, source: str, destination: str) -> None:
     await run(
-        config.LUME, "clone", source, destination,
+        config.LUME, action, source, destination,
         "--source-storage", config.VM_STORAGE,
         "--dest-storage", config.VM_STORAGE,
     )
+
+
+async def clone(source: str, destination: str) -> None:
+    await copy("clone", source, destination)
 
 
 async def snapshot(source: str, destination: str) -> None:
-    await run(
-        config.LUME, "snapshot", source, destination,
-        "--source-storage", config.VM_STORAGE,
-        "--dest-storage", config.VM_STORAGE,
-    )
+    await copy("snapshot", source, destination)
 
 
 async def create(sandbox_id: str | None = None) -> str:
     sandbox_id = sandbox_id or config.new_sandbox_id()
     if not sandbox_id.startswith(config.SANDBOX_PREFIX):
-        raise RuntimeError(f"sandbox id must start with {config.SANDBOX_PREFIX!r}")
+        raise NodeOperationError(f"sandbox id must start with {config.SANDBOX_PREFIX!r}")
 
     await clone(config.BASE_VM, sandbox_id)
     try:
         await start(sandbox_id)
-    except RuntimeError as error:
+    except NodeOperationError as error:
         try:
             await delete(sandbox_id)
-        except RuntimeError as cleanup_error:
-            raise RuntimeError(f"{error}; cleanup of {sandbox_id} also failed: {cleanup_error}")
+        except NodeOperationError as cleanup_error:
+            raise NodeOperationError(f"{error}; cleanup of {sandbox_id} also failed: {cleanup_error}")
         raise
     return sandbox_id
 
@@ -148,7 +147,7 @@ async def stop(name: str, check: bool = True) -> None:
 
 async def delete(name: str) -> None:
     if name == config.BASE_VM or not name.startswith(config.SANDBOX_PREFIX):
-        raise RuntimeError(f"refusing to delete unmanaged VM: {name}")
+        raise NodeOperationError(f"refusing to delete unmanaged VM: {name}")
 
     await stop(name, check=False)
     await lume("delete", name, "--force")
@@ -159,9 +158,8 @@ async def upload(sandbox_id: str, archive_path: str) -> None:
     if config.SSH_PASSWORD is None:
         await run("scp", *SSH_OPTIONS, archive_path, f"{config.SSH_USER}@{address}:/tmp/cider-source.tgz")
     else:
-        directory = tempfile.mkdtemp(prefix="cider-askpass-")
-        askpass = os.path.join(directory, "askpass.sh")
-        try:
+        with tempfile.TemporaryDirectory(prefix="cider-askpass-") as directory:
+            askpass = os.path.join(directory, "askpass.sh")
             with open(askpass, "w") as file:
                 file.write("#!/bin/sh\nprintf '%s' \"$CIDER_SSH_PASSWORD\"\n")
             os.chmod(askpass, 0o700)
@@ -172,7 +170,7 @@ async def upload(sandbox_id: str, archive_path: str) -> None:
                 "SSH_ASKPASS_REQUIRE": "force",
                 "DISPLAY": "cider",
             }
-            proc = await asyncio.create_subprocess_exec(
+            await run(
                 "scp",
                 "-o", "StrictHostKeyChecking=no",
                 "-o", "UserKnownHostsFile=/dev/null",
@@ -182,16 +180,8 @@ async def upload(sandbox_id: str, archive_path: str) -> None:
                 archive_path,
                 f"{config.SSH_USER}@{address}:/tmp/cider-source.tgz",
                 stdin=asyncio.subprocess.DEVNULL,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
                 env=environment,
             )
-            stdout, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                raise RuntimeError(stderr.decode().strip() or stdout.decode().strip())
-        finally:
-            import shutil
-            shutil.rmtree(directory)
     guest_dir = shlex.quote(config.GUEST_DIR)
     await execute(
         sandbox_id,

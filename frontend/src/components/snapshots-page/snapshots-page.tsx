@@ -1,29 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Trash2 } from "lucide-react";
 import { useState } from "react";
 import { deleteSnapshot, listSnapshots } from "../../api";
 import {
-  buildSeries,
   EmptyState,
   FixedList,
+  IconButton,
   ListGrid,
-  listClasses,
   Panel,
   RailHero,
   RailSection,
 } from "../list-page/list-page";
+import { buildSeries, listClasses, paginate, weeklyActivity } from "../list-page/list-page-data";
 import { PageHeader } from "../page-header/page-header";
 import styles from "./snapshots-page.module.css";
 
-const PER_PAGE = 10;
 const DAY_MS = 24 * 60 * 60 * 1000;
-
-const ICON_TRASH = (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3 6h18" />
-    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-  </svg>
-);
 
 function formatBytes(size: number | null): string {
   if (size == null) return "\u2014";
@@ -41,8 +33,8 @@ function createdAt(value: string) {
   });
 }
 
-function relativeDate(value: string) {
-  const days = Math.floor((Date.now() - new Date(value).getTime()) / DAY_MS);
+function relativeDate(value: string, now: number) {
+  const days = Math.floor((now - new Date(value).getTime()) / DAY_MS);
   if (days <= 0) return "Today";
   if (days === 1) return "Yesterday";
   return `${days} days ago`;
@@ -67,7 +59,7 @@ export function SnapshotsPage() {
 
   if (snapshots.status === "pending") {
     return (
-      <section className={styles.page}>
+      <section className={listClasses.page}>
         {header}
         <p className={styles.quiet}>Loading…</p>
       </section>
@@ -75,34 +67,27 @@ export function SnapshotsPage() {
   }
   if (snapshots.error) {
     return (
-      <section className={styles.page}>
+      <section className={listClasses.page}>
         {header}
-        <p className={styles.error} role="alert">{snapshots.error.message}</p>
+        <p className={listClasses.error} role="alert">{snapshots.error.message}</p>
       </section>
     );
   }
 
-  // The response includes tombstones for the sparkline; the table shows live rows.
+  // Keep tombstones in activity data, but exclude them from the table.
   const history = snapshots.data;
   const items = snapshots.data
     .filter((snapshot) => snapshot.deleted_at == null)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-  const totalPages = Math.max(1, Math.ceil(items.length / PER_PAGE));
-  const current = Math.min(page, totalPages - 1);
-  const slice = items.slice(current * PER_PAGE, current * PER_PAGE + PER_PAGE);
+  const { current, items: slice } = paginate(items, page);
   const newest = items[0] ?? null;
   const sized = items.filter((snapshot) => snapshot.size_bytes != null);
   const storedBytes = sized.length ? sized.reduce((sum, snapshot) => sum + (snapshot.size_bytes ?? 0), 0) : null;
   const largestBytes = sized.length ? Math.max(...sized.map((snapshot) => snapshot.size_bytes ?? 0)) : null;
-  const createdThisWeek = history.filter(
-    (snapshot) => Date.now() - new Date(snapshot.created_at).getTime() < 7 * DAY_MS,
-  ).length;
-  const deletedThisWeek = history.filter(
-    (snapshot) => snapshot.deleted_at != null && Date.now() - new Date(snapshot.deleted_at).getTime() < 7 * DAY_MS,
-  ).length;
+  const activity = weeklyActivity(history, snapshots.dataUpdatedAt);
 
   return (
-    <section className={styles.page}>
+    <section className={listClasses.page}>
       {header}
       <ListGrid
         rail={
@@ -111,7 +96,7 @@ export function SnapshotsPage() {
               value={items.length}
               label="Snapshots"
               caption="Snapshots, last 14 days"
-              series={buildSeries(history)}
+              series={buildSeries(history, snapshots.dataUpdatedAt)}
             />
             <RailSection
               title="Library"
@@ -119,14 +104,14 @@ export function SnapshotsPage() {
                 ["Snapshots", items.length],
                 ["Stored", formatBytes(storedBytes)],
                 ["Largest", formatBytes(largestBytes)],
-                ["Newest", newest ? relativeDate(newest.created_at) : "—"],
+                ["Newest", newest ? relativeDate(newest.created_at, snapshots.dataUpdatedAt) : "—"],
               ]}
             />
-            <RailSection title="This week" rows={[["Created", createdThisWeek], ["Deleted", deletedThisWeek]]} />
+            <RailSection title="This week" rows={[["Created", activity.created], ["Deleted", activity.deleted]]} />
           </>
         }
       >
-        {remove.error && <p className={styles.error} role="alert">{remove.error.message}</p>}
+        {remove.error && <p className={listClasses.error} role="alert">{remove.error.message}</p>}
         <Panel>
           <div className={`${listClasses.headRow} ${styles.cols}`}>
             <div>Snapshot</div>
@@ -143,16 +128,16 @@ export function SnapshotsPage() {
             ) : (
               slice.map((snapshot) => (
                 <div className={`${listClasses.row} ${styles.cols}`} key={snapshot.id}>
-                  <div className={`${listClasses.name} ${styles.mono}`}>{snapshot.id}</div>
-                  <div className={`${listClasses.cell} ${styles.mono}`}>{snapshot.source_sandbox_id}</div>
+                  <div className={`${listClasses.name} ${listClasses.mono}`}>{snapshot.id}</div>
+                  <div className={`${listClasses.cell} ${listClasses.mono}`}>{snapshot.source_sandbox_id}</div>
                   <div className={`${listClasses.cell} ${listClasses.num}`}>{formatBytes(snapshot.size_bytes)}</div>
                   <div className={listClasses.cell}>{createdAt(snapshot.created_at)}</div>
                   <div className={styles.acts}>
-                    <button
-                      type="button"
-                      className={`${styles.btnIc} ${styles.danger}`}
-                      aria-label={`Delete snapshot ${snapshot.id}`}
-                      aria-busy={remove.isPending && remove.variables === snapshot.id}
+                    <IconButton
+                      icon={Trash2}
+                      danger
+                      label={`Delete snapshot ${snapshot.id}`}
+                      loading={remove.isPending && remove.variables === snapshot.id}
                       title="Delete"
                       disabled={remove.isPending}
                       onClick={() => {
@@ -160,9 +145,7 @@ export function SnapshotsPage() {
                           remove.mutate(snapshot.id);
                         }
                       }}
-                    >
-                      {ICON_TRASH}
-                    </button>
+                    />
                   </div>
                 </div>
               ))

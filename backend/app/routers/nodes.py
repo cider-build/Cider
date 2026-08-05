@@ -1,6 +1,5 @@
 import math
 import secrets
-from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -12,6 +11,7 @@ from sqlmodel import select
 from ..auth import AuthContext, current_auth_context, hash_token
 from ..db import get_session
 from ..models import Node, NodeCredential, Sandbox, Server
+from ..models.base import utc_now
 from ..services import warm_pool
 from ..services.node_gateway import node_gateway
 
@@ -80,13 +80,8 @@ class NodeEnrollmentOut(BaseModel):
 
 
 def apply_node_metadata(node: Node, metadata: NodeMetadataIn) -> None:
-    node.hardware_model = metadata.hardware_model
-    node.chip = metadata.chip
-    node.macos_version = metadata.macos_version
-    node.cpu_count = metadata.cpu_count
-    node.memory_bytes = metadata.memory_bytes
-    node.storage_total_bytes = metadata.storage_total_bytes
-    node.storage_available_bytes = metadata.storage_available_bytes
+    for field in NodeMetadataOut.model_fields:
+        setattr(node, field, getattr(metadata, field))
     if (
         node.sandbox_cpu_count is None
         and node.sandbox_memory_bytes is None
@@ -106,52 +101,29 @@ def apply_node_metadata(node: Node, metadata: NodeMetadataIn) -> None:
 
 
 def node_out(node: Node) -> NodeOut:
-    metadata = None
-    if all(
-        value is not None
-        for value in (
-            node.hardware_model,
-            node.chip,
-            node.macos_version,
-            node.cpu_count,
-            node.memory_bytes,
-            node.storage_total_bytes,
-            node.storage_available_bytes,
-        )
-    ):
-        metadata = NodeMetadataOut(
-            hardware_model=node.hardware_model,
-            chip=node.chip,
-            macos_version=node.macos_version,
-            cpu_count=node.cpu_count,
-            memory_bytes=node.memory_bytes,
-            storage_total_bytes=node.storage_total_bytes,
-            storage_available_bytes=node.storage_available_bytes,
-        )
-
-    configuration = None
-    if all(
-        value is not None
-        for value in (
-            node.sandbox_cpu_count,
-            node.sandbox_memory_bytes,
-            node.sandbox_storage_bytes,
-        )
-    ):
-        configuration = NodeConfigurationOut(
-            vm_count=node.vm_count,
-            sandbox_cpu_count=node.sandbox_cpu_count,
-            sandbox_memory_bytes=node.sandbox_memory_bytes,
-            sandbox_storage_bytes=node.sandbox_storage_bytes,
-        )
-
     return NodeOut(
         id=node.id,
         name=node.name,
         connected=node_gateway.is_connected(node.id),
-        metadata=metadata,
-        configuration=configuration,
+        metadata=(
+            NodeMetadataOut.model_validate(node, from_attributes=True)
+            if all(getattr(node, field) is not None for field in NodeMetadataOut.model_fields)
+            else None
+        ),
+        configuration=(
+            NodeConfigurationOut.model_validate(node, from_attributes=True)
+            if all(getattr(node, field) is not None for field in NodeConfigurationOut.model_fields)
+            else None
+        ),
     )
+
+
+def enrolled_node(db, node_id: str, org_id: str) -> tuple[Node, NodeCredential]:
+    node = db.get(Node, node_id)
+    credential = db.get(NodeCredential, node_id)
+    if node is None or node.org_id != org_id or credential is None:
+        raise HTTPException(404, "node not found")
+    return node, credential
 
 
 @router.get("")
@@ -189,10 +161,7 @@ async def get_node(
     ctx: AuthContext = Depends(current_auth_context),
 ) -> NodeOut:
     with get_session() as db:
-        node = db.get(Node, node_id)
-        credential = db.get(NodeCredential, node_id)
-        if node is None or node.org_id != ctx.membership.organization_id or credential is None:
-            raise HTTPException(404, "node not found")
+        node, _ = enrolled_node(db, node_id, ctx.membership.organization_id)
     return node_out(node)
 
 
@@ -239,13 +208,12 @@ async def enroll_node(body: NodeEnrollmentIn, ctx: AuthContext = Depends(current
         if existing is not None:
             if node_gateway.is_connected(existing.id):
                 raise HTTPException(409, "node name already exists and is connected")
-            # Reactivate the retained node (possibly revoked) with a freshly rotated credential.
             credential = db.get(NodeCredential, existing.id)
             if credential is None:
                 credential = NodeCredential(node_id=existing.id, token_hash=hash_token(token))
             else:
                 credential.token_hash = hash_token(token)
-                credential.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                credential.created_at = utc_now()
             db.add(credential)
             db.commit()
             return NodeEnrollmentOut(id=existing.id, name=existing.name, token=token)
@@ -264,15 +232,11 @@ async def enroll_node(body: NodeEnrollmentIn, ctx: AuthContext = Depends(current
 @router.delete("/{node_id}", status_code=204)
 async def delete_node(node_id: str, ctx: AuthContext = Depends(current_auth_context)) -> None:
     with get_session() as db:
-        node = db.get(Node, node_id)
-        credential = db.get(NodeCredential, node_id)
-        if node is None or node.org_id != ctx.membership.organization_id or credential is None:
-            raise HTTPException(404, "node not found")
+        _, credential = enrolled_node(db, node_id, ctx.membership.organization_id)
 
         servers = db.exec(select(Server).where(Server.node_id == node_id, Server.deleted_at.is_(None))).all()
         if any(server.status in ("running", "provisioning") for server in servers):
-            # A live server's disk sits on this node; removing it would strand the server.
-            # Stopped servers live in Cider storage and survive the node.
+            # Revocation would make a live server VM unreachable.
             raise HTTPException(409, "node has running servers; stop or delete them first")
 
         sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
@@ -282,12 +246,10 @@ async def delete_node(node_id: str, ctx: AuthContext = Depends(current_auth_cont
         ):
             raise HTTPException(409, "node has active sandboxes; delete them first")
 
-        # Revoking the credential removes the node; its row is kept so sandbox history stays intact.
-        # A stopped sandbox's state is in Cider storage and survives revoking its source node.
-        # Other sandboxes remain node-local and become unreachable with the node.
-        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Keep the node row because workload history references it.
+        now = utc_now()
         for sandbox in sandboxes:
-            # stopped and paused state lives in Cider storage; it survives the node.
+            # Preserve workloads whose state is in Cider storage.
             if sandbox.status in ("stopped", "paused"):
                 continue
             sandbox.deleted_at = now

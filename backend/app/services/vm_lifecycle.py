@@ -1,33 +1,17 @@
-"""Shared VM lifecycle: one implementation for sandboxes and servers.
-
-Sandboxes and servers are the same thing under the hood — a VM that can be
-exported to Cider storage and restored onto any connected node. The only
-differences live in the callers: what triggers an export (pause vs stop),
-what a row is called, and whether a TTL applies.
-
-"""
+"""Shared VM export, restore, placement, and launch operations."""
 
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import HTTPException
-from sqlmodel import select
 
-from ..models import Node, Sandbox
+from ..models import Node
+from ..models.base import utc_now
 from ..snapshot_store import discard_manifest, read_manifest, write_manifest
 from . import node_transport, warm_pool
 from .node_gateway import node_gateway
 
 
-def _now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 async def export_vm(node: Node, vm_id: str, org_id: str, key: str) -> None:
-    """Snapshot a VM's disk into Cider storage under `key`, then destroy the VM.
-
-    Frees the node's slot and disk. The caller updates its own row's status.
-    """
     response = await node_transport.request(
         node,
         "POST",
@@ -50,7 +34,6 @@ async def export_vm(node: Node, vm_id: str, org_id: str, key: str) -> None:
 
 
 async def restore_vm(node: Node, vm_id: str, org_id: str, key: str) -> None:
-    """Rebuild a VM on `node` from the export stored under `key`."""
     manifest = read_manifest(org_id, key)
     await node_transport.request(
         node,
@@ -61,10 +44,7 @@ async def restore_vm(node: Node, vm_id: str, org_id: str, key: str) -> None:
 
 
 async def find_capacity_node(db, org_id: str, node_id: str | None = None) -> Node:
-    """Pick a connected node with a free VM slot, evicting a warm VM if needed.
-
-    With node_id, only that node is considered. Raises a clear 404/429.
-    """
+    """Select a connected node and evict a warm VM when necessary."""
     if node_id is not None:
         node = db.get(Node, node_id)
         if node is None or node.org_id != org_id or not node_gateway.is_connected(node.id):
@@ -78,16 +58,10 @@ async def find_capacity_node(db, org_id: str, node_id: str | None = None) -> Nod
     for candidate in candidates:
         if warm_pool.node_has_vm_capacity(db, candidate):
             return candidate
-        warm = db.exec(
-            select(Sandbox).where(
-                Sandbox.node_id == candidate.id,
-                Sandbox.deleted_at.is_(None),
-                Sandbox.status == "warm",
-            )
-        ).first()
+        warm = warm_pool.warm_sandbox(db, candidate.id)
         if warm is not None:
             await node_transport.request(candidate, "DELETE", f"/sandboxes/{warm.id}")
-            warm.deleted_at = _now()
+            warm.deleted_at = utc_now()
             db.add(warm)
             db.commit()
             return candidate
@@ -95,7 +69,6 @@ async def find_capacity_node(db, org_id: str, node_id: str | None = None) -> Nod
 
 
 async def run_launch(node: Node, vm_id: str, setup: list[str] | None = None, start: str | None = None) -> None:
-    """Run setup commands and launch the start process inside a VM."""
     payload: dict = {}
     if setup:
         payload["setup"] = setup

@@ -1,6 +1,7 @@
 import WebSocket from "ws";
 
 import { NODE_URL } from "./config.js";
+import { closeSocket, socketSend, waitForOpen, websocketUrl } from "./websocket.js";
 
 const CHUNK_SIZE = 256 * 1024;
 const HEARTBEAT_INTERVAL_MS = 20_000;
@@ -9,26 +10,6 @@ const RECONNECT_MIN_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const STABLE_CONNECTION_MS = 60_000;
 const TERMINAL_CLOSE_CODES = new Set([1003, 1008]);
-
-function websocketUrl(apiUrl, nodeId) {
-  const url = new URL(apiUrl);
-  if (url.protocol === "https:") url.protocol = "wss:";
-  else if (url.protocol === "http:") url.protocol = "ws:";
-  else throw new Error(`unsupported Cider API protocol: ${url.protocol}`);
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/node-connections/${nodeId}`;
-  url.search = "";
-  return url.toString();
-}
-
-function websocketPath(baseUrl, path) {
-  const url = new URL(baseUrl);
-  if (url.protocol === "https:") url.protocol = "wss:";
-  else if (url.protocol === "http:") url.protocol = "ws:";
-  else throw new Error(`unsupported WebSocket protocol: ${url.protocol}`);
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}${path}`;
-  url.search = "";
-  return url.toString();
-}
 
 function reconnectDelay(state, ms) {
   return new Promise((resolve) => {
@@ -83,7 +64,7 @@ export async function holdConnection(config, node, metadata, nodeUrl = NODE_URL)
 
 function runConnection(config, node, metadata, nodeUrl, state) {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(websocketUrl(config.apiUrl, node.id), {
+    const socket = new WebSocket(websocketUrl(config.apiUrl, `/node-connections/${node.id}`), {
       headers: {
         Authorization: `Bearer ${node.token}`,
         "X-Cider-Node-Metadata": Buffer.from(JSON.stringify(metadata)).toString("base64"),
@@ -224,44 +205,6 @@ function runConnection(config, node, metadata, nodeUrl, state) {
   });
 }
 
-function closeSocket(socket) {
-  if (!socket) return;
-  if (socket.readyState === WebSocket.OPEN) socket.close(1000);
-  else if (socket.readyState !== WebSocket.CLOSED) socket.terminate();
-}
-
-function waitForOpen(socket, label) {
-  return new Promise((resolve, reject) => {
-    const opened = () => {
-      cleanup();
-      resolve();
-    };
-    const failed = (error) => {
-      cleanup();
-      reject(error);
-    };
-    const rejected = (request, response) => {
-      request.destroy();
-      cleanup();
-      reject(new Error(`${label} rejected the tunnel (HTTP ${response.statusCode})`));
-    };
-    const closed = (code, reason) => {
-      cleanup();
-      reject(new Error(`${label} closed during startup (${code}): ${reason.toString()}`));
-    };
-    const cleanup = () => {
-      socket.off("open", opened);
-      socket.off("error", failed);
-      socket.off("unexpected-response", rejected);
-      socket.off("close", closed);
-    };
-    socket.once("open", opened);
-    socket.once("error", failed);
-    socket.once("unexpected-response", rejected);
-    socket.once("close", closed);
-  });
-}
-
 function bridgeWebSockets(first, second) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -275,7 +218,7 @@ function bridgeWebSockets(first, second) {
     };
     const forward = (destination) => (data, isBinary) => {
       if (destination.readyState !== WebSocket.OPEN) return;
-      // Binary frames are terminal data; text frames are control (resize).
+      // Preserve the protocol distinction between terminal data and control frames.
       destination.send(isBinary ? data : data.toString(), { binary: isBinary }, (error) => {
         if (error) finish(error);
       });
@@ -291,7 +234,7 @@ function bridgeWebSockets(first, second) {
 
 async function openSshTunnel(config, node, nodeUrl, message, tunnel) {
   tunnel.downstream = new WebSocket(
-    websocketPath(
+    websocketUrl(
       nodeUrl,
       `/sandboxes/${encodeURIComponent(message.sandbox_id)}/ssh`,
     ),
@@ -300,7 +243,7 @@ async function openSshTunnel(config, node, nodeUrl, message, tunnel) {
   await waitForOpen(tunnel.downstream, "cider-node");
 
   tunnel.upstream = new WebSocket(
-    websocketPath(
+    websocketUrl(
       config.apiUrl,
       `/node-ssh/${encodeURIComponent(node.id)}/${message.id}`,
     ),
@@ -311,12 +254,6 @@ async function openSshTunnel(config, node, nodeUrl, message, tunnel) {
   );
   await waitForOpen(tunnel.upstream, "Cider backend");
   await bridgeWebSockets(tunnel.downstream, tunnel.upstream);
-}
-
-function socketSend(socket, data) {
-  return new Promise((resolve, reject) => {
-    socket.send(data, (error) => error ? reject(error) : resolve());
-  });
 }
 
 async function sendBody(socket, id, body) {

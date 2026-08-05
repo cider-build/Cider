@@ -32,15 +32,12 @@ app.include_router(ssh.router)
 app.include_router(waitlist.router)
 
 
-# later on, should implement a true queue-based TTL cleanup. simple implementation for now to work on other stuff
 async def cleanup_loop() -> None:
     while True:
         await sandboxes.cleanup_expired_sandboxes()
         await asyncio.sleep(5)
 
 
-# Constant-work reconciliation: nodes are the source of truth for VM state;
-# every sweep pulls a full snapshot from each connected node and corrects rows.
 async def reconcile_loop() -> None:
     while True:
         await reconciler.reconcile_all_nodes()

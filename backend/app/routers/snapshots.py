@@ -1,13 +1,14 @@
-from datetime import datetime, timezone
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlmodel import select
 
 from ..auth import AuthContext, current_auth_context
-from ..services import node_transport, vm_lifecycle, warm_pool
 from ..db import get_session
 from ..models import Sandbox, Snapshot
+from ..models.base import utc_now
+from ..services import node_transport, vm_lifecycle, warm_pool
 from ..snapshot_store import blob_path, delete_manifest, read_manifest
 
 router = APIRouter(prefix="/snapshots")
@@ -38,7 +39,6 @@ def _collect_digests(value, digests: set[str]) -> None:
 
 
 def snapshot_size_bytes(org_id: str, snapshot_id: str) -> int | None:
-    """Stored bytes: the blobs this snapshot's manifest references (shared blobs count fully)."""
     try:
         manifest = read_manifest(org_id, snapshot_id)
     except HTTPException:
@@ -97,18 +97,12 @@ async def restore_snapshot(
 
         previous_node_id = sandbox.node_id
         node_id = node.id
-        manifest = read_manifest(snapshot.org_id, snapshot.id)
         sandbox.node_id = node.id
         sandbox.status = "restoring"
         db.add(sandbox)
         db.commit()
         try:
-            await node_transport.request(
-                node,
-                "POST",
-                f"/sandboxes/{sandbox.id}/restore",
-                json={"manifest": manifest},
-            )
+            await vm_lifecycle.restore_vm(node, sandbox.id, snapshot.org_id, snapshot.id)
         except BaseException:
             sandbox.node_id = previous_node_id
             sandbox.status = "stopped"
@@ -116,9 +110,8 @@ async def restore_snapshot(
             db.commit()
             raise
 
-        # A restored sandbox is a fresh ephemeral one: restart its TTL clock.
         sandbox.status = "active"
-        sandbox.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        sandbox.created_at = utc_now()
         launch_config = snapshot.launch_config or sandbox.launch_config
         try:
             db.add(sandbox)
@@ -133,14 +126,8 @@ async def restore_snapshot(
                 ) from error
             raise
         db.refresh(sandbox)
-        # The disk is back but the start process died with the source VM.
         if launch_config and launch_config.get("start"):
-            await node_transport.request(
-                node,
-                "POST",
-                f"/sandboxes/{sandbox.id}/launch-config",
-                json={"start": launch_config["start"]},
-            )
+            await vm_lifecycle.run_launch(node, sandbox.id, start=launch_config["start"])
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
     return sandbox
 
@@ -152,7 +139,7 @@ async def delete_snapshot(snapshot_id: str, ctx: AuthContext = Depends(current_a
         if snapshot is None or snapshot.deleted_at is not None or snapshot.org_id != ctx.membership.organization_id:
             raise HTTPException(404, "snapshot not found")
         delete_manifest(snapshot.org_id, snapshot.id)
-        # Tombstone instead of a hard delete: the row is the deletion history.
-        snapshot.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        # Keep deletion history for activity metrics.
+        snapshot.deleted_at = utc_now()
         db.add(snapshot)
         db.commit()

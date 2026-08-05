@@ -1,48 +1,29 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pause, Play, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { deleteSandbox, listNodes, listSandboxes, pauseSandbox, resumeSandbox } from "../../api";
-import type { Node as CiderNode, Sandbox } from "../../api";
+import { deleteSandbox, listAllNodes, listSandboxes, pauseSandbox, resumeSandbox } from "../../api";
+import type { Sandbox } from "../../api";
 import {
-  buildSeries,
   EmptyState,
   FixedList,
+  IconButton,
   ListGrid,
-  listClasses,
+  ListSearch,
+  ListToolbar,
   Panel,
   RailHero,
   RailSection,
   Spinner,
   StatusText,
 } from "../list-page/list-page";
+import { buildSeries, listClasses, paginate, weeklyActivity } from "../list-page/list-page-data";
 import { PageHeader } from "../page-header/page-header";
 import styles from "./sandboxes-page.module.css";
 
-const PER_PAGE = 10;
 const COLUMNS = "minmax(150px, 1.4fr) minmax(84px, 104px) minmax(136px, 1fr) minmax(64px, 92px) minmax(96px, 108px) 78px";
-
-const ICON_PAUSE = (
-  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
-    <rect x="1" y="0.5" width="3" height="9" rx="1" />
-    <rect x="6" y="0.5" width="3" height="9" rx="1" />
-  </svg>
-);
-const ICON_PLAY = (
-  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true">
-    <path d="M2.2 1.06c0-.72.78-1.17 1.4-.8l6.55 3.94c.6.36.6 1.24 0 1.6L3.6 9.74a.93.93 0 0 1-1.4-.8z" />
-  </svg>
-);
-const ICON_TRASH = (
-  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-    <path d="M3 6h18" />
-    <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
-    <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
-  </svg>
-);
 const GIBIBYTE = 1024 ** 3;
 const gbFormat = new Intl.NumberFormat("en-US", { maximumFractionDigits: 1 });
-const WEEK_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Known backend statuses, in display order; unknown statuses sort last. */
 const STATUS_ORDER = ["active", "paused", "pausing", "provisioning", "restoring", "warm", "stopped", "deleted"];
 
 function displayStatus(sandbox: Sandbox): string {
@@ -60,7 +41,6 @@ function statusLabel(status: string): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-/** "Jul 28, 14:02" — no middots, 24-hour clock. */
 function formatCreated(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
@@ -68,15 +48,6 @@ function formatCreated(value: string): string {
   const hh = String(date.getHours()).padStart(2, "0");
   const mm = String(date.getMinutes()).padStart(2, "0");
   return `${day}, ${hh}:${mm}`;
-}
-
-/** The nodes endpoint is paginated; walk every page so the join is complete. */
-async function listAllNodes(): Promise<CiderNode[]> {
-  const first = await listNodes({ page: 1, search: "" });
-  const rest = await Promise.all(
-    Array.from({ length: first.pages - 1 }, (_, i) => listNodes({ page: i + 2, search: "" })),
-  );
-  return [first, ...rest].flatMap((page) => page.items);
 }
 
 function StatusPicker({
@@ -143,7 +114,7 @@ function StatusPicker({
   );
 }
 
-function SandboxesRail({ sandboxes }: { sandboxes: Sandbox[] }) {
+function SandboxesRail({ sandboxes, now }: { sandboxes: Sandbox[]; now: number }) {
   const active = sandboxes.filter(
     (sandbox) => sandbox.deleted_at == null && sandbox.status === "active",
   ).length;
@@ -158,16 +129,7 @@ function SandboxesRail({ sandboxes }: { sandboxes: Sandbox[] }) {
     .map((status) => [statusLabel(status), counts.get(status) ?? 0]);
   fleetRows.push(["Total", sandboxes.length]);
 
-  const weekAgo = Date.now() - WEEK_MS;
-  const createdThisWeek = sandboxes.filter((sandbox) => {
-    const time = new Date(sandbox.created_at).getTime();
-    return !Number.isNaN(time) && time >= weekAgo;
-  }).length;
-  const deletedThisWeek = sandboxes.filter((sandbox) => {
-    if (sandbox.deleted_at == null) return false;
-    const time = new Date(sandbox.deleted_at).getTime();
-    return !Number.isNaN(time) && time >= weekAgo;
-  }).length;
+  const activity = weeklyActivity(sandboxes, now);
 
   return (
     <>
@@ -175,14 +137,14 @@ function SandboxesRail({ sandboxes }: { sandboxes: Sandbox[] }) {
         value={active}
         label="Active sandboxes"
         caption="Sandboxes, last 14 days"
-        series={buildSeries(sandboxes)}
+        series={buildSeries(sandboxes, now)}
       />
       <RailSection title="Fleet" rows={fleetRows} />
       <RailSection
         title="This week"
         rows={[
-          ["Created", createdThisWeek],
-          ["Deleted", deletedThisWeek],
+          ["Created", activity.created],
+          ["Deleted", activity.deleted],
         ]}
       />
     </>
@@ -209,9 +171,7 @@ export function SandboxesPage() {
   const sandboxes = useQuery({
     queryKey: ["sandboxes"],
     queryFn: listSandboxes,
-    // Transient states resolve server-side; poll until they settle. Also
-    // poll while an action request is in flight, so the transient status
-    // becomes visible without waiting for it to already be visible.
+    // Begin polling before the API exposes its transient status.
     refetchInterval: (query) =>
       actionPending ||
       query.state.data?.some(
@@ -246,9 +206,7 @@ export function SandboxesPage() {
     );
   }, [data, query, status]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
-  const currentPage = Math.min(page, totalPages - 1);
-  const pageItems = filtered.slice(currentPage * PER_PAGE, currentPage * PER_PAGE + PER_PAGE);
+  const { current: currentPage, items: pageItems } = paginate(filtered, page);
 
   function allocation(sandbox: Sandbox): string {
     const configuration = nodeById.get(sandbox.node_id)?.configuration;
@@ -259,7 +217,7 @@ export function SandboxesPage() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={listClasses.page}>
       <PageHeader
         title="Sandboxes"
         lede={
@@ -270,7 +228,7 @@ export function SandboxesPage() {
           </>
         }
       />
-      <ListGrid rail={data ? <SandboxesRail sandboxes={data} /> : null}>
+      <ListGrid rail={data ? <SandboxesRail sandboxes={data} now={sandboxes.dataUpdatedAt} /> : null}>
         {actionError && <p className={styles.actionError} role="alert">{actionError.message}</p>}
         {sandboxes.status === "pending" ? (
           <Panel>
@@ -282,13 +240,9 @@ export function SandboxesPage() {
           </Panel>
         ) : data ? (
           <Panel>
-            <div className={styles.toolbar}>
-              <input
-                className={styles.search}
-                type="text"
+            <ListToolbar>
+              <ListSearch
                 placeholder="Search by sandbox id or node"
-                autoComplete="off"
-                spellCheck={false}
                 aria-label="Search sandboxes"
                 value={query}
                 onChange={(event) => {
@@ -304,7 +258,7 @@ export function SandboxesPage() {
                   setPage(0);
                 }}
               />
-            </div>
+            </ListToolbar>
             <div className={listClasses.headRow} style={{ gridTemplateColumns: COLUMNS }}>
               <div>Sandbox</div>
               <div>Node</div>
@@ -337,10 +291,10 @@ export function SandboxesPage() {
                   const state = displayStatus(sandbox);
                   return (
                     <div className={listClasses.row} style={{ gridTemplateColumns: COLUMNS }} key={sandbox.id}>
-                      <div className={`${listClasses.name} ${styles.mono}`}>{sandbox.id}</div>
+                      <div className={`${listClasses.name} ${listClasses.mono}`}>{sandbox.id}</div>
                       <div className={listClasses.cell}>{sandbox.node_name}</div>
                       <div className={listClasses.cell}>{allocation(sandbox)}</div>
-                      <div className={styles.statusCell}>
+                      <div className={listClasses.statusCell}>
                         <StatusText tone={statusTone(state)}>{statusLabel(state)}</StatusText>
                         {(["pausing", "restoring", "provisioning"].includes(state) ||
                           (actionPending &&
@@ -351,37 +305,33 @@ export function SandboxesPage() {
                       <div className={listClasses.cell}>{formatCreated(sandbox.created_at)}</div>
                       <div className={styles.acts}>
                         {state === "active" && (
-                          <button
-                            type="button"
-                            className={styles.btnIc}
-                            aria-label={`Pause sandbox ${sandbox.id}`}
-                            aria-busy={pause.isPending && pause.variables === sandbox.id}
+                          <IconButton
+                            icon={Pause}
+                            filled
+                            label={`Pause sandbox ${sandbox.id}`}
+                            loading={pause.isPending && pause.variables === sandbox.id}
                             title="Pause"
                             disabled={actionPending}
                             onClick={() => pause.mutate(sandbox.id)}
-                          >
-                            {pause.isPending && pause.variables === sandbox.id ? <Spinner size={10} /> : ICON_PAUSE}
-                          </button>
+                          />
                         )}
                         {state === "paused" && (
-                          <button
-                            type="button"
-                            className={styles.btnIc}
-                            aria-label={`Resume sandbox ${sandbox.id}`}
-                            aria-busy={resume.isPending && resume.variables === sandbox.id}
+                          <IconButton
+                            icon={Play}
+                            filled
+                            label={`Resume sandbox ${sandbox.id}`}
+                            loading={resume.isPending && resume.variables === sandbox.id}
                             title="Resume"
                             disabled={actionPending}
                             onClick={() => resume.mutate(sandbox.id)}
-                          >
-                            {resume.isPending && resume.variables === sandbox.id ? <Spinner size={10} /> : ICON_PLAY}
-                          </button>
+                          />
                         )}
                         {sandbox.deleted_at == null && (
-                          <button
-                            type="button"
-                            className={`${styles.btnIc} ${styles.danger}`}
-                            aria-label={`Delete sandbox ${sandbox.id}`}
-                            aria-busy={remove.isPending && remove.variables === sandbox.id}
+                          <IconButton
+                            icon={Trash2}
+                            danger
+                            label={`Delete sandbox ${sandbox.id}`}
+                            loading={remove.isPending && remove.variables === sandbox.id}
                             title="Delete"
                             disabled={actionPending}
                             onClick={() => {
@@ -389,9 +339,7 @@ export function SandboxesPage() {
                                 remove.mutate(sandbox.id);
                               }
                             }}
-                          >
-                            {ICON_TRASH}
-                          </button>
+                          />
                         )}
                       </div>
                     </div>

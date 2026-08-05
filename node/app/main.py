@@ -10,18 +10,33 @@ import tempfile
 import termios
 from typing import Annotated
 
-from fastapi import FastAPI, File, HTTPException, Path, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    HTTPException,
+    Path,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StringConstraints
 
 from . import config, lume, portable_snapshot
+from .errors import NodeOperationError
 
 app = FastAPI(title="Cider Node")
 
 
+@app.exception_handler(NodeOperationError)
+async def node_operation_error(_request: Request, error: NodeOperationError) -> JSONResponse:
+    return JSONResponse(status_code=500, content={"detail": str(error)})
+
+
 @app.on_event("startup")
 async def watch_for_orphaning() -> None:
-    # If the connector that spawned this agent dies, exit and free the port
-    # so the next connector can bind it.
+    # Exit when the connector dies so a replacement can bind the port.
     async def watchdog() -> None:
         while True:
             await asyncio.sleep(5)
@@ -41,6 +56,20 @@ def vm_lock(sandbox_id: str) -> asyncio.Lock:
     return _vm_locks.setdefault(sandbox_id, asyncio.Lock())
 
 
+@contextlib.asynccontextmanager
+async def upload_path(archive: UploadFile):
+    path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".tgz") as file:
+            path = file.name
+            while chunk := await archive.read(1024 * 1024):
+                file.write(chunk)
+        yield path
+    finally:
+        if path is not None:
+            os.unlink(path)
+
+
 @app.get("/health")
 async def health() -> dict:
     return {"status": "ok"}
@@ -48,7 +77,6 @@ async def health() -> dict:
 
 @app.get("/sandboxes")
 async def list_sandboxes() -> list[dict]:
-    """Full snapshot of every workload VM — the node is the source of truth."""
     return [
         {"id": vm["name"], "status": vm["status"]}
         for vm in await lume.list_vms()
@@ -75,110 +103,82 @@ class LaunchConfigIn(BaseModel):
 
 @app.post("/sandboxes", status_code=201)
 async def create_sandbox(archive: UploadFile | None = File(None)) -> dict:
-    # current implementation writes to the OS, later on should explore other solutions
     sandbox_id = None
-    archive_path = None
     try:
         sandbox_id = await lume.create()
         if archive is not None:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".tgz") as file:
-                archive_path = file.name
-                while chunk := await archive.read(1024 * 1024):
-                    file.write(chunk)
-            await lume.upload(sandbox_id, archive_path)
+            async with upload_path(archive) as path:
+                await lume.upload(sandbox_id, path)
         return {"id": sandbox_id}
-    except RuntimeError as e:
-        if sandbox_id: await lume.delete(sandbox_id)
-        raise HTTPException(500, str(e))
-    finally:
-        if archive_path is not None:
-            os.unlink(archive_path)
+    except NodeOperationError:
+        if sandbox_id:
+            await lume.delete(sandbox_id)
+        raise
 
 
 @app.post("/sandboxes/{sandbox_id}/stop", status_code=204)
 async def stop_sandbox(sandbox_id: str) -> None:
     async with vm_lock(sandbox_id):
-        try:
-            if await lume.find(sandbox_id) is None:
-                raise HTTPException(404, "sandbox not found")
-            await lume.stop(sandbox_id)
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
+        if await lume.find(sandbox_id) is None:
+            raise HTTPException(404, "sandbox not found")
+        await lume.stop(sandbox_id)
 
 
 @app.post("/sandboxes/{sandbox_id}/start", status_code=204)
 async def start_sandbox(sandbox_id: str) -> None:
     async with vm_lock(sandbox_id):
-        try:
-            vm = await lume.find(sandbox_id)
-            if vm is None:
-                raise HTTPException(404, "sandbox not found")
-            if vm["status"] == "running":
-                return
-            await lume.start(sandbox_id)
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
+        vm = await lume.find(sandbox_id)
+        if vm is None:
+            raise HTTPException(404, "sandbox not found")
+        if vm["status"] == "running":
+            return
+        await lume.start(sandbox_id)
 
 
 @app.post("/sandboxes/{sandbox_id}/upload", status_code=204)
 async def upload_sandbox(sandbox_id: str, archive: UploadFile = File(...)) -> None:
-    archive_path = None
     async with vm_lock(sandbox_id):
-        try:
-            if await lume.find(sandbox_id) is None:
-                raise HTTPException(404, "sandbox not found")
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".tgz") as file:
-                archive_path = file.name
-                while chunk := await archive.read(1024 * 1024):
-                    file.write(chunk)
-            await lume.upload(sandbox_id, archive_path)
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
-        finally:
-            if archive_path is not None:
-                os.unlink(archive_path)
+        if await lume.find(sandbox_id) is None:
+            raise HTTPException(404, "sandbox not found")
+        async with upload_path(archive) as path:
+            await lume.upload(sandbox_id, path)
 
 
 @app.post("/sandboxes/{sandbox_id}/snapshots", status_code=201)
 async def snapshot_sandbox(sandbox_id: str, body: SnapshotInput) -> dict:
     async with vm_lock(sandbox_id):
-        try:
-            vm = await lume.find(sandbox_id)
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
+        vm = await lume.find(sandbox_id)
         if vm is None:
             raise HTTPException(404, "sandbox not found")
         snapshot_vm = config.snapshot_vm_name(body.snapshot)
-
         try:
             await lume.snapshot(sandbox_id, snapshot_vm)
-        except RuntimeError as e:
-            raise HTTPException(500, f"live snapshot failed: {e}")
+        except NodeOperationError as error:
+            raise NodeOperationError(f"live snapshot failed: {error}") from error
     return {"id": body.snapshot}
 
 
 @app.post("/sandboxes/{sandbox_id}/portable-snapshots", status_code=201)
 async def portable_snapshot_sandbox(sandbox_id: str, body: SnapshotInput) -> dict:
     async with vm_lock(sandbox_id):
+        if await lume.find(sandbox_id) is None:
+            raise HTTPException(404, "sandbox not found")
         try:
-            vm = await lume.find(sandbox_id)
-            if vm is None:
-                raise HTTPException(404, "sandbox not found")
             manifest = await portable_snapshot.export(sandbox_id, body.snapshot)
-        except RuntimeError as e:
-            raise HTTPException(500, f"portable snapshot failed: {e}")
+        except NodeOperationError as error:
+            raise NodeOperationError(f"portable snapshot failed: {error}") from error
     return {"id": body.snapshot, "manifest": manifest}
 
 
 @app.post("/sandboxes/{sandbox_id}/restore", status_code=201)
 async def restore_sandbox(sandbox_id: str, body: RestoreInput) -> dict:
     async with vm_lock(sandbox_id):
+        if await lume.find(sandbox_id) is not None:
+            raise HTTPException(409, "sandbox already exists on destination node")
         try:
-            if await lume.find(sandbox_id) is not None:
-                raise HTTPException(409, "sandbox already exists on destination node")
             await portable_snapshot.restore(sandbox_id, body.manifest)
-        except RuntimeError as e:
-            raise HTTPException(500, f"portable restore failed: {e}")
+        except NodeOperationError as error:
+            raise NodeOperationError(f"portable restore failed: {error}") from error
     return {"id": sandbox_id}
 
 
@@ -186,21 +186,15 @@ async def restore_sandbox(sandbox_id: str, body: RestoreInput) -> dict:
 async def delete_snapshot(sandbox_id: str, snapshot_id: Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")]) -> None:
     async with vm_lock(sandbox_id):
         snapshot_vm = config.snapshot_vm_name(snapshot_id)
-        try:
-            if await lume.find(snapshot_vm) is None:
-                return
-            await lume.delete(snapshot_vm)
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
+        if await lume.find(snapshot_vm) is None:
+            return
+        await lume.delete(snapshot_vm)
 
 
 @app.post("/sandboxes/{sandbox_id}/execute", status_code=200)
 async def execute_sandbox(sandbox_id: str, body: ExecuteInput) -> dict:
     async with vm_lock(sandbox_id):
-        try:
-            return {"output": await lume.execute(sandbox_id, body.command)}
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
+        return {"output": await lume.execute(sandbox_id, body.command)}
 
 
 def _set_winsize(fd: int, rows: int, cols: int) -> None:
@@ -215,7 +209,6 @@ async def websocket_to_pty(websocket: WebSocket, master: int) -> None:
         if message.get("bytes") is not None:
             os.write(master, message["bytes"])
         elif message.get("text") is not None:
-            # Control frames: {"resize": {"cols": int, "rows": int}}
             with contextlib.suppress(Exception):
                 control = json.loads(message["text"])
                 resize = control.get("resize")
@@ -242,17 +235,14 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
             await websocket.close(code=1008, reason="sandbox not found")
             return
         address = await lume.ip(sandbox_id)
-    except RuntimeError as error:
+    except NodeOperationError as error:
         await websocket.close(code=1011, reason=str(error))
         return
 
     await websocket.accept()
 
-    # The first frame may be a control init carrying terminal size and TERM;
-    # a binary first frame is plain data from an init-less client.
-    # TERMs the stock macOS guest has terminfo for. Newer terminals (Ghostty,
-    # kitty, WezTerm) advertise entries the guest lacks, which degrades the
-    # remote line editor — those map to xterm-256color.
+    # The optional first text frame sets the terminal type and size.
+    # Limit TERM to entries available in the macOS guest.
     SAFE_TERMS = {"xterm", "xterm-256color", "screen", "screen-256color", "tmux", "tmux-256color", "vt100", "ansi"}
     term = "xterm-256color"
     rows, cols = 24, 80
@@ -278,8 +268,7 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
 
     def make_controlling_tty() -> None:
         os.setsid()
-        # On BSD/macOS the first tty opened after setsid becomes the
-        # controlling terminal; failure only costs live-resize signals.
+        # Opening the PTY after setsid makes it the controlling terminal on macOS.
         try:
             fd = os.open(os.ttyname(0), os.O_RDWR)
             os.close(fd)
@@ -349,25 +338,19 @@ async def run_launch_config(sandbox_id: str, body: LaunchConfigIn) -> None:
     )
 
     async with vm_lock(sandbox_id):
-        try:
-            for command in setup:
-                if not command.strip():
-                    raise HTTPException(422, "launch config setup commands must be non-empty")
-                await lume.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'{cd_project} && {command}')}")
-            if body.start:
-                command = f"nohup /bin/zsh -lc {shlex.quote(body.start)} >/tmp/cider-start.log 2>&1 </dev/null &"
-                await lume.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'{cd_project} && {command}')}")
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
+        for command in setup:
+            if not command.strip():
+                raise HTTPException(422, "launch config setup commands must be non-empty")
+            await lume.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'{cd_project} && {command}')}")
+        if body.start:
+            command = f"nohup /bin/zsh -lc {shlex.quote(body.start)} >/tmp/cider-start.log 2>&1 </dev/null &"
+            await lume.execute(sandbox_id, f"/bin/zsh -lc {shlex.quote(f'{cd_project} && {command}')}")
 
 
 @app.delete("/sandboxes/{sandbox_id}", status_code=204)
 async def delete_sandbox(sandbox_id: str) -> None:
     async with vm_lock(sandbox_id):
-        try:
-            await lume.delete(sandbox_id)
-        except RuntimeError as e:
-            raise HTTPException(500, str(e))
+        await lume.delete(sandbox_id)
 
 
 def run() -> None:

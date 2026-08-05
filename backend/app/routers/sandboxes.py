@@ -1,19 +1,19 @@
-from datetime import datetime, timedelta, timezone
 import io
 import re
 import tarfile
+from datetime import datetime, timedelta
 
 import yaml
-
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 from sqlmodel import select
 
 from ..auth import AuthContext, current_auth_context
 from ..config import settings
-from ..services import node_transport, vm_lifecycle, warm_pool
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
+from ..models.base import utc_now
+from ..services import node_transport, vm_lifecycle, warm_pool
 from ..snapshot_store import discard_manifest, write_manifest
 
 router = APIRouter(prefix="/sandboxes")
@@ -32,10 +32,24 @@ class SandboxWithNode(BaseModel):
     deleted_at: datetime | None
 
 
+def owned_sandbox(db, sandbox_id: str, org_id: str) -> Sandbox:
+    sandbox = db.get(Sandbox, sandbox_id)
+    if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != org_id:
+        raise HTTPException(404, "sandbox not found")
+    return sandbox
+
+
+def sandbox_node(db, sandbox: Sandbox) -> Node:
+    node = db.get(Node, sandbox.node_id)
+    if node is None:
+        raise HTTPException(404, "node not found")
+    return node
+
+
 async def cleanup_expired_sandboxes() -> None:
     db = get_session()
     try:
-        cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=settings.sandbox_ttl_seconds)
+        cutoff = utc_now() - timedelta(seconds=settings.sandbox_ttl_seconds)
         nodes_to_refill = []
         for sandbox in db.exec(select(Sandbox).where(Sandbox.deleted_at.is_(None), Sandbox.status == "active", Sandbox.created_at <= cutoff)).all():
             node = db.get(Node, sandbox.node_id)
@@ -45,7 +59,7 @@ async def cleanup_expired_sandboxes() -> None:
                 await node_transport.request(node, "DELETE", f"/sandboxes/{sandbox.id}")
             except HTTPException:
                 continue
-            sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            sandbox.deleted_at = utc_now()
             db.add(sandbox)
             nodes_to_refill.append(node.id)
         db.commit()
@@ -84,7 +98,6 @@ STORAGE_UNITS = {"kb": 1024, "mb": 1024**2, "gb": 1024**3, "tb": 1024**4}
 
 
 def min_storage_bytes(config: dict | None) -> int | None:
-    """resources.min_storage is a placement constraint: bytes, or "60GB"-style."""
     if not config:
         return None
     resources = config.get("resources")
@@ -165,7 +178,7 @@ async def create_sandbox(
                                 500,
                                 f"warm sandbox upload failed: {error.detail}; cleanup also failed: {cleanup_error.detail}",
                             ) from error
-                        sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                        sandbox.deleted_at = utc_now()
                         db.add(sandbox)
                         db.commit()
                         await warm_pool.ensure_node_has_warm_sandboxes(node.id)
@@ -188,15 +201,10 @@ async def create_sandbox(
 @router.post("/{sandbox_id}/snapshots", status_code=201)
 async def snapshot_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> Snapshot:
     with get_session() as db:
-        sandbox = db.get(Sandbox, sandbox_id)
-        if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
-            raise HTTPException(404, "sandbox not found")
+        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
         if sandbox.status != "active":
             raise HTTPException(409, "snapshots require a running sandbox")
-
-        node = db.get(Node, sandbox.node_id)
-        if node is None:
-            raise HTTPException(404, "node not found")
+        node = sandbox_node(db, sandbox)
         node_id = node.id
 
         snapshot = Snapshot(source_sandbox_id=sandbox.id, org_id=ctx.membership.organization_id, launch_config=sandbox.launch_config)
@@ -232,15 +240,10 @@ async def snapshot_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_a
 @router.post("/{sandbox_id}/execute", status_code=200)
 async def execute_sandbox(sandbox_id: str, body: ExecuteInput, ctx: AuthContext = Depends(current_auth_context)) -> dict:
     with get_session() as db:
-        sandbox = db.get(Sandbox, sandbox_id)
-        if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
-            raise HTTPException(404, "sandbox not found")
+        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
         if sandbox.status in ("stopped", "restoring"):
             raise HTTPException(409, f"sandbox is {sandbox.status}; wait for it to be available")
-
-        node = db.get(Node, sandbox.node_id)
-        if node is None:
-            raise HTTPException(404, "node not found")
+        node = sandbox_node(db, sandbox)
 
     response = await node_transport.request(node, "POST", f"/sandboxes/{sandbox.id}/execute", json={"command": body.command})
 
@@ -250,14 +253,9 @@ async def execute_sandbox(sandbox_id: str, body: ExecuteInput, ctx: AuthContext 
 @router.delete("/{sandbox_id}", status_code=204)
 async def delete_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> None:
     with get_session() as db:
-        sandbox = db.get(Sandbox, sandbox_id)
-
-        if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
-            raise HTTPException(404, "sandbox not found")
-
+        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
         node = db.get(Node, sandbox.node_id)
         node_id = node.id if node is not None else None
-        # stopped and paused sandboxes hold no VM; their state is in Cider storage.
         holds_vm = sandbox.status not in ("stopped", "paused")
         should_refill = holds_vm
         if holds_vm:
@@ -267,7 +265,7 @@ async def delete_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_aut
         if sandbox.status == "paused":
             discard_manifest(sandbox.org_id, pause_key(sandbox.id))
 
-        sandbox.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        sandbox.deleted_at = utc_now()
         db.add(sandbox)
         db.commit()
     if should_refill:
@@ -284,20 +282,14 @@ class ResumeInput(BaseModel):
 
 @router.post("/{sandbox_id}/pause", status_code=200)
 async def pause_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> Sandbox:
-    """Snapshot the VM into Cider storage, then destroy it. Frees the node's slot."""
     with get_session() as db:
-        sandbox = db.get(Sandbox, sandbox_id)
-        if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
-            raise HTTPException(404, "sandbox not found")
+        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
         if sandbox.status != "active":
             raise HTTPException(409, f"sandbox is {sandbox.status}; only a running sandbox can be paused")
-        node = db.get(Node, sandbox.node_id)
-        if node is None:
-            raise HTTPException(404, "node not found")
+        node = sandbox_node(db, sandbox)
         node_id = node.id
 
-        # "pausing" keeps the reconciler from tombstoning the row in the
-        # window where the VM is already gone but the status is not yet paused.
+        # Prevent reconciliation from treating the VM removal as drift.
         sandbox.status = "pausing"
         db.add(sandbox)
         db.commit()
@@ -322,12 +314,9 @@ async def resume_sandbox(
     body: ResumeInput | None = None,
     ctx: AuthContext = Depends(current_auth_context),
 ) -> Sandbox:
-    """Restore a paused sandbox onto any connected node with a free slot — sandboxes are portable."""
     requested_node_id = body.node_id if body else None
     with get_session() as db:
-        sandbox = db.get(Sandbox, sandbox_id)
-        if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != ctx.membership.organization_id:
-            raise HTTPException(404, "sandbox not found")
+        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
         if sandbox.status != "paused":
             raise HTTPException(409, f"sandbox is {sandbox.status}; only a paused sandbox can be resumed")
 
@@ -348,14 +337,12 @@ async def resume_sandbox(
             db.commit()
             raise
 
-        # A resumed sandbox restarts its TTL clock, like a restored one.
         sandbox.status = "active"
-        sandbox.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        sandbox.created_at = utc_now()
         db.add(sandbox)
         db.commit()
         db.refresh(sandbox)
-        # The disk is back but the start process died with the old VM; relaunch
-        # it. Setup does not re-run — its effects live on the disk.
+        # Restore preserves disk changes, but not running processes.
         if sandbox.launch_config:
             await vm_lifecycle.run_launch(node, sandbox.id, start=sandbox.launch_config.get("start"))
     discard_manifest(sandbox.org_id, pause_key(sandbox.id))

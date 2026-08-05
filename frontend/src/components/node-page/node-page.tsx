@@ -200,7 +200,6 @@ export function NodePage() {
       <Link className={styles.backlink} to="/nodes">← Nodes</Link>
       <header className={styles.nodeband}>
         <h1>{node.data.name}</h1>
-        {/* A live node is obviously connected — only the exception is worth a word. */}
         {!node.data.connected && <StatusText tone="gone">Offline</StatusText>}
       </header>
       <div className={styles.nodeGrid}>

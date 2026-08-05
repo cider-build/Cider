@@ -1,8 +1,18 @@
-/* Shared list-page primitives, ported from prototype app-l.html. */
+.page {
+  max-width: 1240px;
+}
 
-/* ---------- grid + rail shell ---------- */
-/* The rail is sticky with no max-height and no overflow rule — it can never
-   grow its own scrollbar; the document stays the only scroll context. */
+.error {
+  color: #b42318;
+  font-size: 13px;
+  margin: 0 0 14px;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+}
+
 .listGrid {
   align-items: start;
   display: grid;
@@ -19,7 +29,6 @@
   top: 24px;
 }
 
-/* ---------- panel ---------- */
 .panel {
   background: var(--card);
   border: 1px solid var(--line-strong);
@@ -27,7 +36,6 @@
   overflow: hidden;
 }
 
-/* ---------- rows ---------- */
 .lrow {
   align-items: center;
   display: grid;
@@ -85,7 +93,6 @@
   text-align: right;
 }
 
-/* ---------- status text (grey ramp only) ---------- */
 .st {
   font-size: 12.5px;
   white-space: nowrap;
@@ -106,8 +113,6 @@
   font-weight: 500;
 }
 
-/* ---------- fixed 10-slot list body ---------- */
-/* Exactly 10 row slots (46px each), never an inner scrollbar. */
 .rows {
   height: 460px;
 }
@@ -176,7 +181,6 @@
   transform: translate(2px, 2px);
 }
 
-/* ---------- empty state ---------- */
 .empty {
   color: var(--muted);
   display: grid;
@@ -193,9 +197,6 @@
   font-size: 14px;
 }
 
-/* ---------- rail: hero trend + ledger ---------- */
-/* Bare type directly on the page background — no surface, no border box,
-   no shadow, no meters. */
 .railsec + .railsec {
   margin-top: 28px;
 }
@@ -280,7 +281,6 @@
   white-space: nowrap;
 }
 
-/* ---------- narrow windows ---------- */
 @media (max-width: 1360px) {
   .listGrid {
     gap: 20px;
@@ -292,7 +292,6 @@
   }
 }
 
-/* Activity, not decoration: a quiet arc that inherits the text color. */
 .spinner {
   animation: spinner-rotate 800ms linear infinite;
   display: inline-block;
@@ -300,4 +299,81 @@
 }
 @keyframes spinner-rotate {
   to { transform: rotate(360deg); }
+}
+
+.toolbar {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 20px;
+}
+
+.search {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 12px;
+  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease), transform 150ms var(--ease);
+  width: 250px;
+}
+
+.search::placeholder {
+  color: var(--faint);
+}
+
+.search:focus {
+  border-color: var(--ink);
+  box-shadow: 3px 3px 0 0 #dcdcdc;
+  outline: none;
+  transform: translate(-1px, -1px);
+}
+
+.btnIc {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  box-shadow: 2px 2px 0 0 #ececec;
+  color: var(--muted);
+  cursor: pointer;
+  display: inline-flex;
+  flex-shrink: 0;
+  height: 28px;
+  justify-content: center;
+  padding: 0;
+  transition: border-color 130ms var(--ease), box-shadow 130ms var(--ease), color 130ms var(--ease), transform 130ms var(--ease), opacity 130ms var(--ease);
+  width: 28px;
+}
+
+.btnIc:hover:not(:disabled) {
+  border-color: var(--faint);
+  box-shadow: 1px 1px 0 0 #ececec;
+  color: var(--ink);
+  transform: translate(1px, 1px);
+}
+
+.btnIc:active:not(:disabled) {
+  box-shadow: none;
+  transform: translate(2px, 2px);
+}
+
+.btnIc:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.danger:hover:not(:disabled) {
+  border-color: #e2aaa4;
+  color: #b42318;
+}
+
+.statusCell {
+  align-items: center;
+  color: var(--muted);
+  display: inline-flex;
+  gap: 7px;
 }

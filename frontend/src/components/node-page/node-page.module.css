@@ -1,6 +1,3 @@
-/* Node detail, restyled to prototype app-l.html (#node): backlink + name
-   band, raised configuration card, spec-table and capacity cards at right. */
-
 .backlink {
   color: var(--muted);
   display: inline-block;
@@ -65,7 +62,6 @@
   margin: 5px 0 0;
 }
 
-/* ---------- spec table ---------- */
 .spec {
   border-collapse: collapse;
   margin-top: 8px;
@@ -92,7 +88,6 @@
   text-align: right;
 }
 
-/* ---------- capacity meter ---------- */
 .meter {
   display: grid;
   gap: 7px;
@@ -131,7 +126,6 @@
   height: 100%;
 }
 
-/* ---------- configuration form ---------- */
 .cfgform {
   display: grid;
   gap: 18px;
@@ -253,7 +247,6 @@
   }
 }
 
-/* Quiet destructive action: bordered, ink on hover-red, no orange. */
 .removeBtn {
   background: var(--card);
   border: 1px solid var(--line-strong);

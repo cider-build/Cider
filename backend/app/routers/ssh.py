@@ -5,9 +5,14 @@ from fastapi import APIRouter, Depends, HTTPException, WebSocket, status
 from pydantic import BaseModel
 from sqlmodel import select
 
-from ..auth import AuthContext, bearer_auth_context, current_auth_context, hash_token
+from ..auth import (
+    AuthContext,
+    bearer_auth_context,
+    current_auth_context,
+    valid_node_credential,
+)
 from ..db import get_session
-from ..models import Node, NodeCredential, Sandbox, Server
+from ..models import Node, Sandbox, Server
 from ..services.node_gateway import NodeUnavailableError, SshTunnel, node_gateway
 
 router = APIRouter(tags=["ssh"])
@@ -104,7 +109,6 @@ async def pipe_websocket(source: WebSocket, destination: WebSocket) -> None:
         if message.get("bytes") is not None:
             await destination.send_bytes(message["bytes"])
         elif message.get("text") is not None:
-            # Control frames (terminal resize) ride as text.
             await destination.send_text(message["text"])
         else:
             raise RuntimeError("SSH tunnels only accept data or control frames")
@@ -123,7 +127,6 @@ async def user_ssh(websocket: WebSocket, sandbox_id: str) -> None:
                 or sandbox.deleted_at is not None
                 or sandbox.status != "active"
             ):
-                # A running server's VM is an SSH target too.
                 server = db.exec(
                     select(Server).where(
                         Server.vm_id == sandbox_id,
@@ -178,22 +181,9 @@ async def user_ssh(websocket: WebSocket, sandbox_id: str) -> None:
 
 @router.websocket("/node-ssh/{node_id}/{tunnel_id}")
 async def node_ssh(websocket: WebSocket, node_id: str, tunnel_id: str) -> None:
-    authorization = websocket.headers.get("authorization", "")
-    scheme, separator, token = authorization.partition(" ")
-    if separator != " " or scheme.lower() != "bearer" or not token:
-        await websocket.close(
-            code=status.WS_1008_POLICY_VIOLATION,
-            reason="invalid node credential",
-        )
-        return
     with get_session() as db:
-        credential = db.exec(
-            select(NodeCredential).where(
-                NodeCredential.node_id == node_id,
-                NodeCredential.token_hash == hash_token(token),
-            )
-        ).first()
-    if credential is None:
+        authenticated = valid_node_credential(websocket.headers.get("authorization"), node_id, db)
+    if not authenticated:
         await websocket.close(
             code=status.WS_1008_POLICY_VIOLATION,
             reason="invalid node credential",

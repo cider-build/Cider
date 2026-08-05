@@ -10,8 +10,7 @@ engine = create_engine(
 
 
 def get_session() -> Session:
-    # Sessions here are short-lived; keep attribute values readable after a
-    # commit so instances can be returned from a closed session safely.
+    # Keep loaded attributes available after route sessions close.
     return Session(engine, expire_on_commit=False)
 
 

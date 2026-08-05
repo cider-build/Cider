@@ -1,18 +1,20 @@
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { Link } from "react-router";
-import { listNodes } from "../../api";
+import { listAllNodes, listNodes } from "../../api";
 import type { Node, NodeMetadata } from "../../api";
 import {
   EmptyState,
   FixedList,
   ListGrid,
-  listClasses,
+  ListSearch,
+  ListToolbar,
   Panel,
   RailHero,
   RailSection,
   StatusText,
 } from "../list-page/list-page";
+import { listClasses } from "../list-page/list-page-data";
 import { PageHeader } from "../page-header/page-header";
 import styles from "./nodes-page.module.css";
 
@@ -20,21 +22,9 @@ const amount = new Intl.NumberFormat(undefined, { maximumFractionDigits: 1 });
 const GIBIBYTE = 1024 ** 3;
 const TEBIBYTE = 1024 ** 4;
 
-/** Bytes as "16 GB" / "1.5 TB" (binary units, L's labels). */
 function formatBytes(bytes: number) {
   if (bytes / GIBIBYTE >= 1000) return `${amount.format(bytes / TEBIBYTE)} TB`;
   return `${amount.format(bytes / GIBIBYTE)} GB`;
-}
-
-/** The rail needs fleet-wide numbers; the list endpoint is paginated, so walk every page. */
-async function listAllNodes(): Promise<Node[]> {
-  const first = await listNodes({ page: 1, search: "" });
-  const items = [...first.items];
-  for (let page = 2; page <= first.pages; page += 1) {
-    const next = await listNodes({ page, search: "" });
-    items.push(...next.items);
-  }
-  return items;
 }
 
 const cellClass = listClasses.cell;
@@ -54,8 +44,7 @@ function NodesRail({ nodes }: { nodes: Node[] }) {
   const slots = connected.reduce((total, node) => total + (node.configuration?.vm_count ?? 0), 0);
   return (
     <>
-      {/* Nodes carry no created_at, so there is no honest 14-day series —
-          the hero renders with an empty series (no sparkline) and no caption. */}
+      {/* Nodes have no creation timestamp, so activity data is unavailable. */}
       <RailHero value={`${connected.length} of ${nodes.length}`} label="Macs connected" caption="" series={[]} />
       <RailSection
         title="Connected hardware"
@@ -129,23 +118,19 @@ export function NodesPage() {
       {nodes.status === "pending" ? (
         "Loading..."
       ) : nodes.error ? (
-        <p className={styles.error}>{nodes.error.message}</p>
+        <p className={listClasses.error}>{nodes.error.message}</p>
       ) : data ? (
         <ListGrid rail={fleet.data ? <NodesRail nodes={fleet.data} /> : null}>
           <div className={styles.fade} data-fetching={nodes.isFetching}>
             <Panel>
-              <div className={styles.toolbar}>
-                <input
-                  className={styles.search}
-                  type="text"
+              <ListToolbar>
+                <ListSearch
                   value={search}
                   onChange={(event) => updateSearch(event.target.value)}
                   placeholder="Search by node name"
-                  autoComplete="off"
-                  spellCheck={false}
                   aria-label="Search nodes"
                 />
-              </div>
+              </ListToolbar>
               <div className={`${listClasses.headRow} ${styles.colsNodes}`}>
                 <div>Node</div>
                 <div>Chip</div>

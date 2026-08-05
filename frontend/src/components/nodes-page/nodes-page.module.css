@@ -1,16 +1,8 @@
-/* Nodes list, ported from prototype app-l.html (#nodes). Row/panel/rail
-   primitives live in list-page; this module only adds the page's column
-   template and page-local pieces. */
-
-/* Doubled selector so this beats list-page's .lrow gap regardless of module
-   emit order. Template measured from app-l's .cols-nodes, minus the VMs
-   column (no real per-node usage data yet). */
 .colsNodes.colsNodes {
   gap: 13px;
   grid-template-columns: minmax(120px, 1.1fr) 70px 46px 40px 56px minmax(128px, 1fr) 88px 16px;
 }
 
-/* L's a.lrow: the whole row is the link. */
 .linkRow {
   color: inherit;
   cursor: pointer;
@@ -41,38 +33,6 @@
   transform: translateX(2px);
 }
 
-/* L's .sb-toolbar / .sb-search treatment, reused for the node search. */
-.toolbar {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 12px 20px;
-}
-
-.search {
-  background: var(--card);
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  font: inherit;
-  font-size: 13px;
-  padding: 8px 12px;
-  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease), transform 150ms var(--ease);
-  width: 250px;
-}
-
-.search::placeholder {
-  color: var(--faint);
-}
-
-.search:focus {
-  border-color: var(--ink);
-  box-shadow: 3px 3px 0 0 #dcdcdc;
-  outline: none;
-  transform: translate(-1px, -1px);
-}
-
 .kbd {
   background: #f1f1f1;
   border-radius: 5px;
@@ -87,13 +47,6 @@
 
 .fade[data-fetching="true"] {
   opacity: 0.72;
-}
-
-.error {
-  color: #b42318;
-  font-size: 13px;
-  margin: 0;
-  white-space: pre-wrap;
 }
 
 @media (max-width: 1360px) {

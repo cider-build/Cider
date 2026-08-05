@@ -5,32 +5,21 @@ import contextlib
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 from pydantic import ValidationError
-from sqlmodel import select
 
-from ..auth import hash_token
+from ..auth import valid_node_credential
 from ..db import get_session
-from ..models import Node, NodeCredential
+from ..models import Node
 from ..services import warm_pool
 from ..services.node_gateway import node_gateway
 from .nodes import NodeMetadataIn, apply_node_metadata
 
 router = APIRouter(tags=["node-connections"])
 
-# Connected nodes send a heartbeat every 20 seconds; a silent connection is half-open.
 LIVENESS_TIMEOUT_SECONDS = 60
 
 
 @router.websocket("/node-connections/{node_id}")
 async def connect_node(websocket: WebSocket, node_id: str) -> None:
-    authorization = websocket.headers.get("authorization", "")
-    scheme, separator, token = authorization.partition(" ")
-    if separator != " " or scheme.lower() != "bearer" or not token:
-        await websocket.close(
-            code=status.WS_1008_POLICY_VIOLATION,
-            reason="invalid node credential",
-        )
-        return
-
     encoded_metadata = websocket.headers.get("x-cider-node-metadata", "")
     try:
         metadata = NodeMetadataIn.model_validate_json(
@@ -55,19 +44,14 @@ async def connect_node(websocket: WebSocket, node_id: str) -> None:
         return
 
     with get_session() as db:
-        credential = db.exec(
-            select(NodeCredential).where(
-                NodeCredential.node_id == node_id,
-                NodeCredential.token_hash == hash_token(token),
-            )
-        ).first()
+        authenticated = valid_node_credential(websocket.headers.get("authorization"), node_id, db)
         node = db.get(Node, node_id)
-        if credential is not None and node is not None:
+        if authenticated and node is not None:
             apply_node_metadata(node, metadata)
             db.add(node)
             db.commit()
             db.refresh(node)
-    if credential is None or node is None:
+    if not authenticated or node is None:
         await websocket.close(
             code=status.WS_1008_POLICY_VIOLATION,
             reason="invalid node credential",

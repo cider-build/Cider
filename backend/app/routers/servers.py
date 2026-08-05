@@ -1,15 +1,16 @@
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import datetime
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, StringConstraints
 from sqlmodel import select
-from typing import Annotated
 
 from ..auth import AuthContext, current_auth_context
 from ..db import get_session
 from ..models import Node, Server
+from ..models.base import utc_now
 from ..services import node_transport, vm_lifecycle, warm_pool
 from ..snapshot_store import discard_manifest, manifest_path
 
@@ -23,13 +24,6 @@ def shell_quote(value: str) -> str:
 
 
 class ServerConfig(BaseModel):
-    """A server's spec — the same shape a project's cider.yaml grows into.
-
-    `image` names a base image; only the default exists today. Software
-    installs run during provisioning. Secrets (the Telegram token) are
-    injected at boot and must never end up in any shared image.
-    """
-
     image: str = "macos-26"
     software: list[str] = []
     channels: list[str] = []
@@ -38,8 +32,7 @@ class ServerConfig(BaseModel):
     start: str | None = None
 
 
-# Until the macos-dev base image ships with these baked in, installs run at
-# provision time. Keep node/images/PREINSTALLED.md in sync with this list.
+# Keep install commands synchronized with node/images/PREINSTALLED.md.
 ENSURE_BREW = (
     'command -v brew >/dev/null || NONINTERACTIVE=1 /bin/bash -c '
     '"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"'
@@ -57,16 +50,11 @@ SOFTWARE_INSTALLS: dict[str, list[str]] = {
         "export PATH=/opt/homebrew/bin:$PATH; curl -fsSL https://openclaw.ai/install.sh | bash",
     ],
 }
-# Xcode ships as its own base image (it does not fit the default image's
-# disk); it is not installable at provision time.
+# Xcode requires a separate image because its install exceeds the default disk.
 UNPROVISIONABLE = {"xcode"}
 
 LAUNCH_GATEWAY = "nohup openclaw gateway >/tmp/openclaw.log 2>&1 &"
 
-# OpenClaw channel adapters Cider can configure. Every credential is a
-# SecretRef into the VM's env, which the config's env map populates.
-# WebChat ships with the core install and needs no credentials; iMessage
-# and WhatsApp need interactive sign-in, so provisioning skips them.
 CHANNEL_CONFIGS: dict[str, dict] = {
     "telegram": {
         "enabled": True,
@@ -86,7 +74,6 @@ CHANNEL_CONFIGS: dict[str, dict] = {
 
 
 def provision_commands(config: ServerConfig) -> tuple[list[str], str | None]:
-    """Expand a config into ordered shell commands plus the start process."""
     software: list[str] = list(config.software)
     configured_channels = {name: CHANNEL_CONFIGS[name] for name in config.channels if name in CHANNEL_CONFIGS}
     if config.channels and "openclaw" not in software:
@@ -99,13 +86,10 @@ def provision_commands(config: ServerConfig) -> tuple[list[str], str | None]:
         for command in SOFTWARE_INSTALLS[name]:
             if command not in commands:
                 commands.append(command)
-    # The env map is the general answer to "this software needs a key/setting":
-    # values land in the login shell and, for OpenClaw, in its own .env file.
     if "openclaw" in software and config.env:
         env_file = "".join(f"{key}={value}\n" for key, value in config.env.items())
         commands.append("mkdir -p ~/.openclaw && printf %s " + shell_quote(env_file) + " > ~/.openclaw/.env")
     if config.env:
-        # Shell tools (claude, codex) read these from login shells.
         exports = "# cider env\n" + "".join(
             f"export {key}={shell_quote(value)}\n" for key, value in config.env.items()
         )
@@ -113,8 +97,7 @@ def provision_commands(config: ServerConfig) -> tuple[list[str], str | None]:
             "grep -q '# cider env' ~/.zprofile 2>/dev/null || printf %s " + shell_quote(exports) + " >> ~/.zprofile"
         )
     if configured_channels:
-        # Discord and Slack ship as external plugins; configuring the channel
-        # also trusts its plugin, or the gateway refuses to start it.
+        # The gateway rejects external channels unless their plugins are enabled.
         plugin_channels = {name for name in configured_channels if name in ("discord", "slack")}
         openclaw_config = json.dumps({
             "gateway": {"mode": "local"},
@@ -134,7 +117,6 @@ def provision_commands(config: ServerConfig) -> tuple[list[str], str | None]:
 
 
 def relaunch_commands(config: ServerConfig) -> tuple[list[str], str | None]:
-    """Commands to revive processes after a restore — installs are on the disk."""
     commands: list[str] = []
     if any(name in CHANNEL_CONFIGS for name in config.channels):
         commands.append(LAUNCH_GATEWAY)
@@ -181,6 +163,29 @@ def owned_server(db, server_id: str, org_id: str) -> tuple[Server, Node]:
     return server, node
 
 
+def set_server_status(
+    server_id: str,
+    status: str,
+    detail: str | None = None,
+    node_id: str | None = None,
+) -> bool:
+    with get_session() as db:
+        server = db.get(Server, server_id)
+        if server is None or server.deleted_at is not None:
+            return False
+        server.status = status
+        server.status_detail = detail
+        if node_id is not None:
+            server.node_id = node_id
+        db.add(server)
+        db.commit()
+    return True
+
+
+def error_detail(error: Exception) -> str:
+    return str(error.detail if isinstance(error, HTTPException) else error)
+
+
 @router.get("")
 async def list_servers(
     include_deleted: bool = False,
@@ -219,7 +224,6 @@ async def create_server(body: CreateServerInput, ctx: AuthContext = Depends(curr
         if duplicate is not None:
             raise HTTPException(409, f"a server named {body.name!r} already exists")
 
-    # Claiming a warm sandbox gives an already-booted VM; the warm pool refills behind it.
     node, vm_id = warm_pool.claim_vm_for_server(org_id, body.node_id)
     commands, start = provision_commands(config)
     needs_provision = bool(commands or start)
@@ -243,7 +247,6 @@ async def create_server(body: CreateServerInput, ctx: AuthContext = Depends(curr
 
 
 async def provision_server(server_id: str, node_id: str) -> None:
-    """Get the VM (cold-boot if needed), apply the config, mark running."""
     with get_session() as db:
         node = db.get(Node, node_id)
         server = db.get(Server, server_id)
@@ -256,7 +259,7 @@ async def provision_server(server_id: str, node_id: str) -> None:
             try:
                 response = await node_transport.request(node, "POST", "/sandboxes")
             finally:
-                # Release the slot reservation claim_vm_for_server took.
+                # Release the capacity reservation after the create attempt.
                 warm_pool.warming[node_id] = max(0, warm_pool.warming[node_id] - 1)
                 reserved = False
             vm_id = response.json()["id"]
@@ -273,24 +276,10 @@ async def provision_server(server_id: str, node_id: str) -> None:
     except Exception as error:
         if reserved:
             warm_pool.warming[node_id] = max(0, warm_pool.warming[node_id] - 1)
-        detail = error.detail if isinstance(error, HTTPException) else str(error)
-        with get_session() as db:
-            stored = db.get(Server, server_id)
-            if stored is not None and stored.deleted_at is None:
-                stored.status = "failed"
-                stored.status_detail = str(detail)[:2000]
-                db.add(stored)
-                db.commit()
+        set_server_status(server_id, "failed", error_detail(error)[:2000])
         return
-    with get_session() as db:
-        stored = db.get(Server, server_id)
-        if stored is None or stored.deleted_at is not None:
-            await _discard_vm(node, vm_id)
-            return
-        stored.status = "running"
-        stored.status_detail = None
-        db.add(stored)
-        db.commit()
+    if not set_server_status(server_id, "running"):
+        await _discard_vm(node, vm_id)
 
 
 async def _discard_vm(node: Node, vm_id: str) -> None:
@@ -309,19 +298,13 @@ async def get_server(server_id: str, ctx: AuthContext = Depends(current_auth_con
 
 @router.post("/{server_id}/stop")
 async def stop_server(server_id: str, ctx: AuthContext = Depends(current_auth_context)) -> ServerWithNode:
-    """Export the server's disk to Cider storage and free the node's slot.
-
-    A stopped server lives in storage, tied to no node — start restores it
-    onto any connected Mac with a free slot.
-    """
     with get_session() as db:
         server, node = owned_server(db, server_id, ctx.membership.organization_id)
         if server.status == "stopped":
             return with_node(server, node)
         if server.status != "running":
             raise HTTPException(409, f"server is {server.status}; it cannot be stopped")
-        # The export stops the VM long before the row updates; "stopping" keeps
-        # the reconciler from reading that window as a dead server.
+        # Prevent reconciliation from treating the VM removal as a failure.
         server.status = "stopping"
         db.add(server)
         db.commit()
@@ -338,22 +321,9 @@ async def _stop_task(server_id: str, node_id: str) -> None:
     try:
         await vm_lifecycle.export_vm(node, server.vm_id, server.org_id, storage_key(server))
     except Exception as error:
-        detail = error.detail if isinstance(error, HTTPException) else str(error)
-        with get_session() as db:
-            stored = db.get(Server, server_id)
-            if stored is not None and stored.deleted_at is None:
-                stored.status = "running"
-                stored.status_detail = f"stop failed: {str(detail)[:1900]}"
-                db.add(stored)
-                db.commit()
+        set_server_status(server_id, "running", f"stop failed: {error_detail(error)[:1900]}")
         return
-    with get_session() as db:
-        stored = db.get(Server, server_id)
-        if stored is not None and stored.deleted_at is None:
-            stored.status = "stopped"
-            stored.status_detail = None
-            db.add(stored)
-            db.commit()
+    set_server_status(server_id, "stopped")
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
 
 
@@ -387,36 +357,26 @@ async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> No
         commands, start = relaunch_commands(server_config(server))
         await vm_lifecycle.run_launch(node, server.vm_id, setup=commands, start=start)
     except Exception as error:
-        detail = error.detail if isinstance(error, HTTPException) else str(error)
-        with get_session() as db:
-            stored = db.get(Server, server_id)
-            if stored is not None and stored.deleted_at is None:
-                stored.node_id = previous_node_id
-                stored.status = "stopped"
-                stored.status_detail = f"start failed: {str(detail)[:1900]}"
-                db.add(stored)
-                db.commit()
+        set_server_status(
+            server_id,
+            "stopped",
+            f"start failed: {error_detail(error)[:1900]}",
+            previous_node_id,
+        )
         return
-    with get_session() as db:
-        stored = db.get(Server, server_id)
-        if stored is not None and stored.deleted_at is None:
-            stored.status = "running"
-            stored.status_detail = None
-            db.add(stored)
-            db.commit()
+    set_server_status(server_id, "running")
     discard_manifest(server.org_id, storage_key(server))
     await warm_pool.reconcile_node_warm_pool(node_id)
 
 
 @router.post("/{server_id}/retry")
 async def retry_server(server_id: str, ctx: AuthContext = Depends(current_auth_context)) -> ServerWithNode:
-    """Re-run provisioning for a failed server."""
     with get_session() as db:
         server, node = owned_server(db, server_id, ctx.membership.organization_id)
         if server.status != "failed":
             raise HTTPException(409, f"server is {server.status}; only a failed server can be retried")
         if manifest_path(server.org_id, storage_key(server)).exists():
-            # Its disk is already exported; the true state is stopped.
+            # A saved manifest means provisioning failed after export.
             server.status = "stopped"
             server.status_detail = None
             db.add(server)
@@ -434,12 +394,11 @@ async def retry_server(server_id: str, ctx: AuthContext = Depends(current_auth_c
 
 @router.delete("/{server_id}", status_code=204)
 async def delete_server(server_id: str, ctx: AuthContext = Depends(current_auth_context)) -> None:
-    # Tombstone first, then read vm_id back: a provision finishing mid-delete
-    # commits its vm_id before this update, so the VM is never orphaned.
+    # Tombstone before reading vm_id to include a concurrent provision result.
     with get_session() as db:
         server, node = owned_server(db, server_id, ctx.membership.organization_id)
         was_stopped = server.status == "stopped"
-        server.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        server.deleted_at = utc_now()
         db.add(server)
         db.commit()
         db.refresh(server)

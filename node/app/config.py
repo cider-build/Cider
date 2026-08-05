@@ -2,10 +2,11 @@ import os
 import secrets
 import shutil
 
+from .errors import NodeOperationError
 
 LUME = shutil.which(os.environ.get("LUME", "lume"))
 if LUME is None:
-    raise RuntimeError("Lume is not installed or LUME is not executable")
+    raise NodeOperationError("Lume is not installed or LUME is not executable")
 BASE_VM = os.environ.get("CIDER_BASE_VM", "base")
 VM_STORAGE = os.environ.get("CIDER_VM_STORAGE", os.path.expanduser("~/.cider/vms"))
 SANDBOX_PREFIX = os.environ.get("CIDER_SANDBOX_PREFIX", "cider-")
@@ -40,5 +41,5 @@ def vm_path(name: str) -> str:
 
 def require_storage_config() -> tuple[str, str, str]:
     if not API_URL or not NODE_ID or not NODE_TOKEN:
-        raise RuntimeError("portable snapshots require CIDER_API_URL, CIDER_NODE_ID, and CIDER_NODE_TOKEN")
+        raise NodeOperationError("portable snapshots require CIDER_API_URL, CIDER_NODE_ID, and CIDER_NODE_TOKEN")
     return API_URL.rstrip("/"), NODE_ID, NODE_TOKEN

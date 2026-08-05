@@ -1,10 +1,3 @@
-/* Sandboxes page, ported from prototype app-l.html (#sandboxes). */
-
-.page {
-  margin: 0;
-  max-width: 1240px;
-}
-
 .kbd {
   background: #f1f1f1;
   border-radius: 5px;
@@ -13,49 +6,12 @@
   padding: 1px 6px;
 }
 
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 12px;
-}
-
 .quiet {
   color: var(--muted);
   font-size: 13px;
   margin: 0;
   padding: 44px 20px;
   text-align: center;
-}
-
-/* ---------- toolbar: search + status dropdown ---------- */
-.toolbar {
-  align-items: center;
-  border-bottom: 1px solid var(--line);
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding: 12px 20px;
-}
-
-.search {
-  background: var(--card);
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  font: inherit;
-  font-size: 13px;
-  padding: 8px 12px;
-  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease), transform 150ms var(--ease);
-  width: 250px;
-}
-
-.search::placeholder {
-  color: var(--faint);
-}
-
-.search:focus {
-  border-color: var(--ink);
-  box-shadow: 3px 3px 0 0 #dcdcdc;
-  outline: none;
-  transform: translate(-1px, -1px);
 }
 
 .sbStatus {
@@ -144,7 +100,6 @@
   transform: translate(-1px, -1px);
 }
 
-/* ---------- header hint tooltip ---------- */
 .thHelp {
   align-items: center;
   display: inline-flex;
@@ -198,66 +153,14 @@
   visibility: visible;
 }
 
-/* Row actions — same quiet 28px icon buttons as the snapshots page. */
 .acts {
   display: flex;
   gap: 6px;
   justify-content: flex-end;
 }
 
-/* L's .btn-ic: quiet 28px square icon button with the press-in mechanic. */
-.btnIc {
-  align-items: center;
-  background: var(--card);
-  border: 1px solid var(--line-strong);
-  border-radius: 7px;
-  box-shadow: 2px 2px 0 0 #ececec;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  flex-shrink: 0;
-  height: 28px;
-  justify-content: center;
-  padding: 0;
-  transition: border-color 130ms var(--ease), box-shadow 130ms var(--ease), color 130ms var(--ease), transform 130ms var(--ease), opacity 130ms var(--ease);
-  width: 28px;
-}
-
-.btnIc:hover:not(:disabled) {
-  border-color: var(--faint);
-  box-shadow: 1px 1px 0 0 #ececec;
-  color: var(--ink);
-  transform: translate(1px, 1px);
-}
-
-.btnIc:active:not(:disabled) {
-  box-shadow: 0 0 0 0 #ececec;
-  transform: translate(2px, 2px);
-}
-
-.btnIc:disabled {
-  cursor: default;
-  opacity: 0.45;
-}
-
-.btnIc svg {
-  display: block;
-}
-
-.danger:hover:not(:disabled) {
-  border-color: #e2aaa4;
-  color: #b42318;
-}
-
 .actionError {
   color: var(--ink);
   font-size: 13px;
   margin: 0 0 10px;
-}
-
-.statusCell {
-  align-items: center;
-  color: var(--muted);
-  display: inline-flex;
-  gap: 7px;
 }

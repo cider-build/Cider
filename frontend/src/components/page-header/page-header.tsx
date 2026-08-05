@@ -5,13 +5,10 @@ export function PageHeader({
   title,
   lede,
   action,
-  actions,
 }: {
   title: string;
   lede?: ReactNode;
   action?: ReactNode;
-  /** Back-compat alias for `action`. */
-  actions?: ReactNode;
 }) {
   return (
     <header className={styles.phead}>
@@ -20,7 +17,7 @@ export function PageHeader({
         {lede != null && <p>{lede}</p>}
       </div>
       <div className={styles.grow} />
-      {action ?? actions}
+      {action}
     </header>
   );
 }

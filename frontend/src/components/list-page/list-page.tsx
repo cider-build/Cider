@@ -1,22 +1,8 @@
-import type { ReactNode } from "react";
+import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode } from "react";
+import type { LucideIcon } from "lucide-react";
 import styles from "./list-page.module.css";
+import { PER_PAGE } from "./list-page-data";
 
-const PER_PAGE = 10;
-
-/**
- * Shared class names for list rows. Pages compose these with their own
- * column templates (set `gridTemplateColumns` inline or in the page module).
- * The head row gets both `row` and `headRow`.
- */
-export const listClasses = {
-  row: styles.lrow,
-  headRow: `${styles.lrow} ${styles.lhead}`,
-  name: styles.name,
-  cell: styles.cell,
-  num: styles.num,
-};
-
-/** L's .list-grid: main column + sticky 240px rail directly on the page background. */
 export function ListGrid({ rail, children }: { rail: ReactNode; children: ReactNode }) {
   return (
     <div className={styles.listGrid}>
@@ -26,12 +12,10 @@ export function ListGrid({ rail, children }: { rail: ReactNode; children: ReactN
   );
 }
 
-/** L's .panel white card. */
 export function Panel({ children }: { children: ReactNode }) {
   return <div className={styles.panel}>{children}</div>;
 }
 
-/** Grey-ramp text-only status. No dots, no pills, no color. */
 export function Spinner({ size = 12 }: { size?: number }) {
   return (
     <svg
@@ -48,16 +32,40 @@ export function Spinner({ size = 12 }: { size?: number }) {
   );
 }
 
+type IconButtonProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, "children" | "aria-label"> & {
+  label: string;
+  icon: LucideIcon;
+  loading?: boolean;
+  danger?: boolean;
+  filled?: boolean;
+};
+
+export function IconButton({ label, icon: Icon, loading, danger, filled, ...props }: IconButtonProps) {
+  return (
+    <button
+      {...props}
+      type="button"
+      className={danger ? `${styles.btnIc} ${styles.danger}` : styles.btnIc}
+      aria-label={label}
+      aria-busy={loading || undefined}
+    >
+      {loading ? <Spinner size={10} /> : <Icon size={12} fill={filled ? "currentColor" : "none"} />}
+    </button>
+  );
+}
+
+export function ListToolbar({ children }: { children: ReactNode }) {
+  return <div className={styles.toolbar}>{children}</div>;
+}
+
+export function ListSearch(props: InputHTMLAttributes<HTMLInputElement>) {
+  return <input {...props} className={styles.search} type="text" autoComplete="off" spellCheck={false} />;
+}
+
 export function StatusText({ tone, children }: { tone: "ok" | "warm" | "gone"; children: ReactNode }) {
   return <span className={`${styles.st} ${styles[tone]}`}>{children}</span>;
 }
 
-/**
- * Fixed 10-slot list body: always exactly 10 row-heights (460px) tall, plus a
- * footer with the range readout and numbered page buttons (rendered only when
- * there is more than one page). `page` is zero-based; `children` are the up to
- * 10 rendered rows for the current page (or an EmptyState).
- */
 export function FixedList({
   page,
   totalItems,
@@ -99,7 +107,6 @@ export function FixedList({
   );
 }
 
-/** Centered empty state for a zero-item list (renders inside FixedList). */
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
     <div className={styles.empty}>
@@ -132,10 +139,6 @@ function Sparkline({ series }: { series: number[] }) {
   );
 }
 
-/**
- * The rail's opening section: one hero figure over the page's single
- * full-width sparkline, with a quiet caption below.
- */
 export function RailHero({
   value,
   label,
@@ -161,7 +164,6 @@ export function RailHero({
   );
 }
 
-/** A ledger section: quiet sentence-case title, then hairline key-value rows. */
 export function RailSection({
   title,
   rows,
@@ -182,31 +184,4 @@ export function RailSection({
       </div>
     </section>
   );
-}
-
-/**
- * Cumulative series from real timestamps: for each of the last `days` calendar
- * days (ending today), the count of items created by the end of that day.
- */
-/** True history: an item counts on a day if it existed at that day's end.
- *  Pass tombstones too (deleted_at set) — deletions shape the curve. */
-export function buildSeries(
-  items: { created_at: string; deleted_at?: string | null }[],
-  days = 14,
-): number[] {
-  const spans = items
-    .map((item) => ({
-      from: new Date(item.created_at).getTime(),
-      to: item.deleted_at ? new Date(item.deleted_at).getTime() : Infinity,
-    }))
-    .filter((span) => !Number.isNaN(span.from));
-  const series: number[] = [];
-  for (let back = days - 1; back >= 0; back--) {
-    const end = new Date();
-    end.setDate(end.getDate() - back);
-    end.setHours(23, 59, 59, 999);
-    const endTime = end.getTime();
-    series.push(spans.filter((span) => span.from <= endTime && span.to > endTime).length);
-  }
-  return series;
 }

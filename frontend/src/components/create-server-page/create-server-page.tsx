@@ -1,13 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router";
-import { createServer, listNodes } from "../../api";
+import { createServer, listAllNodes } from "../../api";
 import type { Node as CiderNode } from "../../api";
 import {
   OPENCLAW_CHANNELS,
   OS_RELEASES,
   SOFTWARE,
   VARIANTS,
+  APPLE_LOGO,
+  XCODE_LOGO,
   imageReference,
 } from "../../image-catalog";
 import type { ChannelId, OsId, SoftwareId, VariantId } from "../../image-catalog";
@@ -15,27 +17,8 @@ import { Button } from "../button/button";
 import { PageHeader } from "../page-header/page-header";
 import styles from "./create-server-page.module.css";
 
-const APPLE_LOGO = "https://svgl.app/library/apple.svg";
-const XCODE_LOGO = "https://developer.apple.com/assets/elements/icons/xcode/xcode-128x128_2x.png";
-
-const SOFTWARE_META: Record<SoftwareId, { blurb: string; logo: string | null }> = {
-  "claude-code": { blurb: "Anthropic's coding agent", logo: "https://svgl.app/library/claude-ai-icon.svg" },
-  codex: { blurb: "OpenAI's coding agent", logo: "https://svgl.app/library/openai.svg" },
-  cursor: { blurb: "The AI code editor", logo: "https://cdn.simpleicons.org/cursor/000000" },
-  openclaw: { blurb: "Your personal AI assistant", logo: null },
-};
-
-const CHANNEL_LOGOS: Record<ChannelId, string | null> = {
-  imessage: "https://cdn.simpleicons.org/imessage/34DA50",
-  webchat: null,
-  telegram: "https://cdn.simpleicons.org/telegram/26A5E4",
-  discord: "https://cdn.simpleicons.org/discord/5865F2",
-  slack: "https://svgl.app/library/slack.svg",
-  whatsapp: "https://cdn.simpleicons.org/whatsapp/25D366",
-};
-
 function channelIcon(id: ChannelId) {
-  const logo = CHANNEL_LOGOS[id];
+  const logo = OPENCLAW_CHANNELS.find((channel) => channel.id === id)!.logo;
   if (logo) return <img src={logo} alt="" />;
   return (
     <svg
@@ -76,7 +59,6 @@ function NodePicker({
   const [query, setQuery] = useState("");
   const rootRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -95,24 +77,6 @@ function NodePicker({
     };
   }, [open]);
 
-  useLayoutEffect(() => {
-    if (!open) {
-      setUp(false);
-      return;
-    }
-    // Flip the menu upward when the viewport doesn't have room below the
-    // trigger (the Node field sits at the bottom of the create page).
-    // Re-evaluated on every open, after the list is built.
-    const trigger = triggerRef.current;
-    const menu = menuRef.current;
-    if (trigger && menu) {
-      const rect = trigger.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      setUp(spaceBelow < menu.offsetHeight + 12);
-    }
-    searchRef.current?.focus();
-  }, [open]);
-
   const selected = value === null ? null : nodes.find((node) => node.id === value) ?? null;
   const trimmed = query.trim().toLowerCase();
   const matches = nodes.filter((node) => {
@@ -122,7 +86,12 @@ function NodePicker({
   });
 
   function toggle() {
-    if (!open) setQuery("");
+    if (!open) {
+      setQuery("");
+      const trigger = triggerRef.current;
+      setUp(trigger !== null && window.innerHeight - trigger.getBoundingClientRect().bottom < 300);
+      requestAnimationFrame(() => searchRef.current?.focus());
+    }
     setOpen(!open);
   }
 
@@ -168,7 +137,7 @@ function NodePicker({
         </span>
       </button>
       {open && (
-        <div className={up ? `${styles.nodeMenu} ${styles.up}` : styles.nodeMenu} ref={menuRef}>
+        <div className={up ? `${styles.nodeMenu} ${styles.up}` : styles.nodeMenu}>
           <div className={styles.nodeSearch}>
             <input
               ref={searchRef}
@@ -254,7 +223,7 @@ export function CreateServerPage() {
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [keyMenuOpen]);
 
-  const nodes = useQuery({ queryKey: ["nodes", 1, ""], queryFn: () => listNodes({ page: 1, search: "" }) });
+  const nodes = useQuery({ queryKey: ["nodes", "all-pages"], queryFn: listAllNodes });
   const create = useMutation({
     mutationFn: createServer,
     onSuccess: async () => {
@@ -264,7 +233,7 @@ export function CreateServerPage() {
   });
 
   const openclawSelected = software.includes("openclaw");
-  const allNodes = nodes.data?.items ?? [];
+  const allNodes = nodes.data ?? [];
   const selectedNode = nodeId === null ? null : allNodes.find((node) => node.id === nodeId) ?? null;
 
   function submit() {
@@ -428,11 +397,11 @@ export function CreateServerPage() {
                     onClick={() => setSoftware((current) => toggled(current, item.id))}
                   >
                     <span className={styles.softIc}>
-                      {SOFTWARE_META[item.id].logo ? <img src={SOFTWARE_META[item.id].logo ?? ""} alt="" /> : "🦞"}
+                      {item.logo ? <img src={item.logo} alt="" /> : "🦞"}
                     </span>
                     <span className={styles.softText}>
                       <strong>{item.name}</strong>
-                      <span>{SOFTWARE_META[item.id].blurb}</span>
+                      <span>{item.blurb}</span>
                     </span>
                     <span className={styles.check} aria-hidden="true">
                       ✓

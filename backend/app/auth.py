@@ -1,27 +1,35 @@
 import hashlib
 import secrets
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import timedelta
 from typing import Annotated
 
 from argon2 import PasswordHasher
-from argon2.exceptions import VerifyMismatchError, VerificationError
 from fastapi import Cookie, Depends, Header, HTTPException, Response, status
 from sqlmodel import Session, select
 
 from .config import settings
 from .db import session_dependency
-from .models import ApiToken, AuthSession, OrganizationMembership, User
+from .models import ApiToken, AuthSession, NodeCredential, OrganizationMembership, User
+from .models.base import utc_now
 
 ph = PasswordHasher()
 
 
-def utc_now() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
-
-
 def hash_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def valid_node_credential(authorization: str | None, node_id: str, db: Session) -> bool:
+    scheme, separator, token = (authorization or "").partition(" ")
+    if separator != " " or scheme.lower() != "bearer" or not token:
+        return False
+    return db.exec(
+        select(NodeCredential).where(
+            NodeCredential.node_id == node_id,
+            NodeCredential.token_hash == hash_token(token),
+        )
+    ).first() is not None
 
 
 def set_session_cookie(response: Response, token: str) -> None:
@@ -39,17 +47,20 @@ def clear_session_cookie(response: Response) -> None:
     response.delete_cookie(settings.session_cookie_name, httponly=True, secure=settings.auth_cookie_requires_https, samesite="lax")
 
 
-def verify_password(password_hash: str, password: str) -> bool:
-    try:
-        return ph.verify(password_hash, password)
-    except (VerifyMismatchError, VerificationError):
-        return False
-
-
 @dataclass
 class AuthContext:
     user: User
     membership: OrganizationMembership
+
+
+def user_context(db: Session, user_id: str) -> AuthContext:
+    user = db.get(User, user_id)
+    membership = db.exec(
+        select(OrganizationMembership).where(OrganizationMembership.user_id == user_id)
+    ).first()
+    if user is None or membership is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
+    return AuthContext(user=user, membership=membership)
 
 
 def bearer_auth_context(authorization: str | None, db: Session) -> AuthContext:
@@ -61,15 +72,7 @@ def bearer_auth_context(authorization: str | None, db: Session) -> AuthContext:
     api_token = db.exec(select(ApiToken).where(ApiToken.token_hash == hash_token(token))).first()
     if api_token is None or api_token.expires_at <= utc_now():
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
-    user = db.get(User, api_token.user_id)
-    membership = db.exec(
-        select(OrganizationMembership).where(
-            OrganizationMembership.user_id == api_token.user_id
-        )
-    ).first()
-    if user is None or membership is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
-    return AuthContext(user=user, membership=membership)
+    return user_context(db, api_token.user_id)
 
 
 def current_auth_context(
@@ -90,11 +93,7 @@ def current_auth_context(
             db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
 
-    user = db.get(User, session.user_id)
-    membership = db.exec(select(OrganizationMembership).where(OrganizationMembership.user_id == session.user_id)).first()
-    if user is None or membership is None:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
-    return AuthContext(user=user, membership=membership)
+    return user_context(db, session.user_id)
 
 
 def create_session(db: Session, response: Response, user_id: str) -> None:

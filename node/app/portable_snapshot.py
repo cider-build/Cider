@@ -6,6 +6,7 @@ import urllib.error
 import urllib.request
 
 from . import config, lume
+from .errors import NodeOperationError
 
 
 def _base_image_id() -> str:
@@ -13,9 +14,9 @@ def _base_image_id() -> str:
         with open(config.BASE_IMAGE_ID_PATH) as file:
             image_id = file.read().strip()
     except FileNotFoundError as error:
-        raise RuntimeError(f"base image ID is missing: {config.BASE_IMAGE_ID_PATH}") from error
+        raise NodeOperationError(f"base image ID is missing: {config.BASE_IMAGE_ID_PATH}") from error
     if len(image_id) != 64 or any(character not in "0123456789abcdef" for character in image_id):
-        raise RuntimeError(f"base image ID is invalid: {config.BASE_IMAGE_ID_PATH}")
+        raise NodeOperationError(f"base image ID is invalid: {config.BASE_IMAGE_ID_PATH}")
     return image_id
 
 
@@ -32,9 +33,9 @@ def _request(method: str, path: str, body: bytes | None = None) -> bytes:
             return response.read()
     except urllib.error.HTTPError as error:
         detail = error.read().decode(errors="replace")
-        raise RuntimeError(f"Cider storage {method} {path} failed ({error.code}): {detail}") from error
+        raise NodeOperationError(f"Cider storage {method} {path} failed ({error.code}): {detail}") from error
     except urllib.error.URLError as error:
-        raise RuntimeError(f"Cider storage {method} {path} failed: {error.reason}") from error
+        raise NodeOperationError(f"Cider storage {method} {path} failed: {error.reason}") from error
 
 
 def _blob_exists(digest: str) -> bool:
@@ -51,9 +52,9 @@ def _blob_exists(digest: str) -> bool:
         if error.code == 404:
             return False
         detail = error.read().decode(errors="replace")
-        raise RuntimeError(f"Cider storage HEAD failed ({error.code}): {detail}") from error
+        raise NodeOperationError(f"Cider storage HEAD failed ({error.code}): {detail}") from error
     except urllib.error.URLError as error:
-        raise RuntimeError(f"Cider storage HEAD failed: {error.reason}") from error
+        raise NodeOperationError(f"Cider storage HEAD failed: {error.reason}") from error
 
 
 def _put_blob(content: bytes) -> str:
@@ -66,7 +67,7 @@ def _put_blob(content: bytes) -> str:
 def _get_blob(digest: str) -> bytes:
     content = _request("GET", f"/node-storage/blobs/{digest}")
     if hashlib.sha256(content).hexdigest() != digest:
-        raise RuntimeError(f"Cider storage returned corrupt blob {digest}")
+        raise NodeOperationError(f"Cider storage returned corrupt blob {digest}")
     return content
 
 
@@ -83,7 +84,7 @@ def _export_files(sandbox_id: str, snapshot_id: str) -> dict:
     base_disk_path = os.path.join(base_root, "disk.img")
     disk_size = os.path.getsize(source_disk_path)
     if disk_size != os.path.getsize(base_disk_path):
-        raise RuntimeError("sandbox and base disk sizes differ")
+        raise NodeOperationError("sandbox and base disk sizes differ")
 
     chunks = []
     uploaded_bytes = 0
@@ -93,7 +94,7 @@ def _export_files(sandbox_id: str, snapshot_id: str) -> dict:
             source_chunk = source.read(length)
             base_chunk = base.read(length)
             if len(source_chunk) != length or len(base_chunk) != length:
-                raise RuntimeError(f"short disk read at offset {offset}")
+                raise NodeOperationError(f"short disk read at offset {offset}")
             if source_chunk == base_chunk:
                 continue
             digest, stored_size = _compressed_blob(source_chunk)
@@ -129,9 +130,9 @@ async def export(sandbox_id: str, snapshot_id: str) -> dict:
 
 def _restore_files(sandbox_id: str, manifest: dict) -> None:
     if manifest.get("version") != 2:
-        raise RuntimeError("unsupported portable snapshot version")
+        raise NodeOperationError("unsupported portable snapshot version")
     if manifest.get("base_image_id") != _base_image_id():
-        raise RuntimeError(
+        raise NodeOperationError(
             f"snapshot requires base image {manifest.get('base_image_id')}, "
             f"but this node has {_base_image_id()}"
         )
@@ -139,16 +140,16 @@ def _restore_files(sandbox_id: str, manifest: dict) -> None:
     root = config.vm_path(sandbox_id)
     disk_path = os.path.join(root, "disk.img")
     if os.path.getsize(disk_path) != manifest.get("disk_size"):
-        raise RuntimeError("destination base disk has the wrong size")
+        raise NodeOperationError("destination base disk has the wrong size")
     chunk_size = manifest.get("chunk_size")
     if not isinstance(chunk_size, int) or chunk_size <= 0:
-        raise RuntimeError("snapshot chunk size is invalid")
+        raise NodeOperationError("snapshot chunk size is invalid")
     chunks = manifest.get("disk_chunks")
     if not isinstance(chunks, list):
-        raise RuntimeError("snapshot disk chunks are invalid")
+        raise NodeOperationError("snapshot disk chunks are invalid")
     indexes = [chunk.get("index") for chunk in chunks if isinstance(chunk, dict)]
     if len(indexes) != len(chunks) or len(set(indexes)) != len(indexes):
-        raise RuntimeError("snapshot disk chunk indexes are invalid")
+        raise NodeOperationError("snapshot disk chunk indexes are invalid")
     with open(disk_path, "r+b", buffering=0) as disk:
         for chunk in chunks:
             index = chunk["index"]
@@ -161,10 +162,10 @@ def _restore_files(sandbox_id: str, manifest: dict) -> None:
                 or length > chunk_size
                 or index * chunk_size + length > manifest["disk_size"]
             ):
-                raise RuntimeError(f"snapshot chunk {index} is outside the disk")
+                raise NodeOperationError(f"snapshot chunk {index} is outside the disk")
             content = gzip.decompress(_get_blob(chunk["blob"]))
             if len(content) != length:
-                raise RuntimeError(f"snapshot chunk {index} has the wrong length")
+                raise NodeOperationError(f"snapshot chunk {index} has the wrong length")
             disk.seek(index * chunk_size)
             disk.write(content)
         disk.flush()

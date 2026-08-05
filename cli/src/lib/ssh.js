@@ -1,47 +1,13 @@
 import WebSocket from "ws";
 
 import { makeClient } from "./api.js";
-
-
-function printTargets(targets) {
-  if (targets.length === 0) {
-    process.stdout.write("No available sandboxes.\n");
-    return;
-  }
-  const columns = ["sandbox_id", "server_name", "node_name", "status"];
-  for (const target of targets) {
-    if (target.server_name == null) target.server_name = "-";
-  }
-  const widths = columns.map((column) =>
-    Math.max(column.length, ...targets.map((target) => String(target[column]).length)),
-  );
-  process.stdout.write(
-    `${columns.map((column, index) => column.padEnd(widths[index])).join("  ")}\n`,
-  );
-  for (const target of targets) {
-    process.stdout.write(
-      `${columns.map((column, index) =>
-        String(target[column]).padEnd(widths[index])
-      ).join("  ")}\n`,
-    );
-  }
-}
-
-
-function websocketUrl(apiUrl, sandboxId) {
-  const url = new URL(apiUrl);
-  if (url.protocol === "https:") url.protocol = "wss:";
-  else if (url.protocol === "http:") url.protocol = "ws:";
-  else throw new Error(`unsupported Cider API protocol: ${url.protocol}`);
-  url.pathname = `${url.pathname.replace(/\/+$/, "")}/ssh/${sandboxId}`;
-  url.search = "";
-  return url.toString();
-}
+import { printTable } from "./table.js";
+import { websocketUrl } from "./websocket.js";
 
 
 function runSsh(config, target) {
   return new Promise((resolve, reject) => {
-    const socket = new WebSocket(websocketUrl(config.apiUrl, target.sandbox_id), {
+    const socket = new WebSocket(websocketUrl(config.apiUrl, `/ssh/${target.sandbox_id}`), {
       headers: { Authorization: `Bearer ${config.token}` },
       handshakeTimeout: 30_000,
     });
@@ -52,8 +18,7 @@ function runSsh(config, target) {
       if (socket.readyState === WebSocket.OPEN) socket.send(data);
     };
     const onEnd = () => {
-      // stdin is gone (piped input finished): send EOF, give remote output a
-      // moment to flush, then close instead of lingering forever.
+      // Send EOT, then allow buffered remote output to flush.
       if (socket.readyState === WebSocket.OPEN) socket.send(Buffer.from([4]));
       setTimeout(() => {
         if (socket.readyState === WebSocket.OPEN) socket.close(1000, "stdin closed");
@@ -96,7 +61,7 @@ function runSsh(config, target) {
       process.stderr.write(
         `Connecting to ${target.sandbox_id} on ${target.node_name}\n`,
       );
-      // First frame: terminal size and TERM, so the remote PTY matches.
+      // Initialize the remote PTY before terminal data.
       sendResize();
       process.stdout.on("resize", sendResize);
       if (process.stdin.isTTY) {
@@ -166,7 +131,11 @@ export async function ssh(config, sandboxId, options) {
     if (sandboxId || options.new !== undefined) {
       throw new Error("--list cannot be combined with a sandbox or --new");
     }
-    printTargets(await client.listSshTargets());
+    printTable(
+      await client.listSshTargets(),
+      ["sandbox_id", "server_name", "node_name", "status"],
+      { emptyMessage: "No available sandboxes.", emptyValue: "-" },
+    );
     return;
   }
 

@@ -68,9 +68,7 @@ async function ensureSshKey() {
   return (await readFile(`${SSH_KEY_PATH}.pub`, "utf8")).trim();
 }
 
-// Existence is decided by listing the storage and matching names: `lume get` exits
-// nonzero for both "not found" and operational failures, so any listing failure here
-// propagates instead of being read as "absent".
+// lume get uses the same exit status for missing VMs and operational failures.
 async function listVms() {
   const { stdout } = await exec("lume", ["ls", "-f", "json", "--storage", VM_STORAGE]);
   return JSON.parse(stdout);
@@ -161,8 +159,6 @@ async function nodeMetadata() {
   return metadata;
 }
 
-// Enrolling is idempotent per organization and name: the backend reactivates an offline
-// node of the same name with a freshly rotated credential, so a stale local token heals here.
 async function enrollment(config, name) {
   const nodeName = name || readNodeState()?.name || hostname();
   let enrolled;
@@ -198,7 +194,6 @@ async function startNodeService(command, config, node, baseImageIdPath, imageRef
     },
     stdio: ["ignore", "inherit", "inherit"],
   });
-  // A killed connector must not orphan the agent on its port.
   const onSignal = () => {
     stopNodeService(child).finally(() => process.exit(0));
   };

@@ -1,12 +1,9 @@
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime
 
 from sqlalchemy import Index
 from sqlmodel import Field, SQLModel
 
-
-def now_utc() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+from .base import new_id, utc_now
 
 
 class Node(SQLModel, table=True):
@@ -14,7 +11,7 @@ class Node(SQLModel, table=True):
         Index("uq_node_org_id_name", "org_id", "name", unique=True),
     )
 
-    id: str = Field(default_factory=lambda: uuid.uuid4().hex, primary_key=True)
+    id: str = Field(default_factory=new_id, primary_key=True)
     org_id: str = Field(foreign_key="organization.id", index=True)
     name: str = Field(index=True)
     hardware_model: str | None = None
@@ -33,4 +30,4 @@ class Node(SQLModel, table=True):
 class NodeCredential(SQLModel, table=True):
     node_id: str = Field(foreign_key="node.id", primary_key=True)
     token_hash: str = Field(unique=True, index=True)
-    created_at: datetime = Field(default_factory=now_utc)
+    created_at: datetime = Field(default_factory=utc_now)

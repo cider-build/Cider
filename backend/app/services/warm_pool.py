@@ -1,6 +1,5 @@
 import asyncio
 from collections import defaultdict
-from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from sqlmodel import select
@@ -8,6 +7,7 @@ from sqlmodel import select
 from ..config import settings
 from ..db import get_session
 from ..models import Node, Sandbox, Server
+from ..models.base import utc_now
 from . import node_transport
 from .node_gateway import node_gateway
 
@@ -28,48 +28,48 @@ def available_nodes(db, org_id: str | None = None, node_id: str | None = None):
     return [node for node in db.exec(query.order_by(Node.name)).all() if node_gateway.is_connected(node.id)]
 
 
+def require_nodes(db, org_id: str, node_id: str | None = None):
+    nodes = available_nodes(db, org_id, node_id)
+    if nodes:
+        return nodes
+    detail = "node not found or not connected" if node_id is not None else "no nodes registered"
+    raise HTTPException(404, detail)
+
+
+def live_sandboxes(db, node_id: str):
+    return db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
+
+
+def warm_sandbox(db, node_id: str):
+    return db.exec(
+        select(Sandbox).where(
+            Sandbox.node_id == node_id,
+            Sandbox.deleted_at.is_(None),
+            Sandbox.status == "warm",
+            Sandbox.org_id.is_(None),
+        )
+    ).first()
+
+
 def node_has_vm_capacity(db, node):
-    sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node.id, Sandbox.deleted_at.is_(None))).all()
+    sandboxes = live_sandboxes(db, node.id)
     local = sum(sandbox.status != "stopped" for sandbox in sandboxes)
     return local + running_server_count(db, node.id) + warming[node.id] < node.vm_count
 
 
-def require_available_node(db, org_id: str, node_id: str | None = None):
-    nodes = available_nodes(db, org_id, node_id)
-    if not nodes:
-        if node_id is not None:
-            raise HTTPException(404, "node not found or not connected")
-        raise HTTPException(404, "no nodes registered")
-    for node in nodes:
-        if node_has_vm_capacity(db, node):
-            return node
-    raise HTTPException(429, "all nodes are at their configured VM capacity")
-
-
 def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None, min_storage: int | None = None):
-    nodes = available_nodes(db, org_id, node_id)
-    if not nodes:
-        if node_id is not None:
-            raise HTTPException(404, "node not found or not connected")
-        raise HTTPException(404, "no nodes registered")
+    nodes = require_nodes(db, org_id, node_id)
     if min_storage is not None:
         nodes = [node for node in nodes if node.sandbox_storage_bytes is not None and node.sandbox_storage_bytes >= min_storage]
         if not nodes:
             gigabytes = min_storage / 1024**3
             raise HTTPException(422, f"no connected node offers {gigabytes:.0f} GB of storage per sandbox")
     for node in nodes:
-        warm = db.exec(
-            select(Sandbox).where(
-                Sandbox.node_id == node.id,
-                Sandbox.deleted_at.is_(None),
-                Sandbox.status == "warm",
-                Sandbox.org_id.is_(None),
-            )
-        ).first()
+        warm = warm_sandbox(db, node.id)
         if warm is not None:
             warm.status = "provisioning"
             warm.org_id = org_id
-            warm.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            warm.created_at = utc_now()
             db.add(warm)
             db.commit()
             db.refresh(warm)
@@ -81,40 +81,21 @@ def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None, min_sto
 
 
 def claim_vm_for_server(org_id: str, node_id: str | None = None):
-    """Pick a node and, when possible, hand over a warm sandbox's already-booted VM.
-
-    The claimed sandbox row is tombstoned — the VM lives on under the server's
-    ownership. Returns (node, vm_id | None); None means the caller must cold-create.
-    """
+    """Claim a warm VM, or reserve capacity for a new VM."""
     with get_session() as db:
-        nodes = available_nodes(db, org_id, node_id)
-        if not nodes:
-            if node_id is not None:
-                raise HTTPException(404, "node not found or not connected")
-            raise HTTPException(404, "no nodes registered")
+        nodes = require_nodes(db, org_id, node_id)
         for node in nodes:
-            warm = db.exec(
-                select(Sandbox).where(
-                    Sandbox.node_id == node.id,
-                    Sandbox.deleted_at.is_(None),
-                    Sandbox.status == "warm",
-                    Sandbox.org_id.is_(None),
-                )
-            ).first()
+            warm = warm_sandbox(db, node.id)
             if warm is not None:
                 vm_id = warm.id
-                warm.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                warm.deleted_at = utc_now()
                 db.add(warm)
                 db.commit()
-                # The commit expires loaded attributes; reload before the
-                # session closes so the caller gets a usable instance.
-                db.refresh(node)
                 db.expunge(node)
                 return node, vm_id
         for node in nodes:
             if node_has_vm_capacity(db, node):
-                # Reserve the slot: a cold-booting server must not lose it to
-                # a warm-pool refill. The provisioner releases the reservation.
+                # Reserve capacity until the provisioner finishes its create attempt.
                 warming[node.id] += 1
                 db.expunge(node)
                 return node, None
@@ -123,7 +104,7 @@ def claim_vm_for_server(org_id: str, node_id: str | None = None):
 
 async def ensure_node_has_warm_sandboxes(node_id: str):
     with get_session() as db:
-        sandboxes = db.exec(select(Sandbox).where(Sandbox.node_id == node_id, Sandbox.deleted_at.is_(None))).all()
+        sandboxes = live_sandboxes(db, node_id)
         allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes) + running_server_count(db, node_id)
         warm = sum(sandbox.status == "warm" for sandbox in sandboxes)
         node = db.get(Node, node_id)
@@ -141,12 +122,7 @@ async def reconcile_node_warm_pool(node_id: str) -> None:
         node = db.get(Node, node_id)
         if node is None:
             raise RuntimeError(f"node not found while reconciling capacity: {node_id}")
-        sandboxes = db.exec(
-            select(Sandbox).where(
-                Sandbox.node_id == node_id,
-                Sandbox.deleted_at.is_(None),
-            )
-        ).all()
+        sandboxes = live_sandboxes(db, node_id)
         allocated = sum(sandbox.status not in ("warm", "stopped") for sandbox in sandboxes) + running_server_count(db, node_id)
         warm = [sandbox for sandbox in sandboxes if sandbox.status == "warm"]
         target = min(settings.warm_sandboxes_per_node, max(0, node.vm_count - allocated))
@@ -157,7 +133,7 @@ async def reconcile_node_warm_pool(node_id: str) -> None:
         with get_session() as db:
             stored = db.get(Sandbox, sandbox.id)
             if stored is not None and stored.deleted_at is None:
-                stored.deleted_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                stored.deleted_at = utc_now()
                 db.add(stored)
                 db.commit()
 
@@ -185,25 +161,14 @@ async def create_sandbox_on_available_node(
 ):
     for _ in range(settings.sandbox_create_wait_seconds):
         with get_session() as db:
-            nodes = available_nodes(db, org_id, node_id)
-            if not nodes:
-                if node_id is not None:
-                    raise HTTPException(404, "node not found or not connected")
-                raise HTTPException(404, "no nodes registered")
+            nodes = require_nodes(db, org_id, node_id)
 
             for node in nodes:
-                warm = db.exec(
-                    select(Sandbox).where(
-                        Sandbox.node_id == node.id,
-                        Sandbox.deleted_at.is_(None),
-                        Sandbox.status == "warm",
-                        Sandbox.org_id.is_(None),
-                    )
-                ).first()
+                warm = warm_sandbox(db, node.id)
                 if warm is not None:
                     warm.status = status
                     warm.org_id = org_id
-                    warm.created_at = datetime.now(timezone.utc).replace(tzinfo=None)
+                    warm.created_at = utc_now()
                     db.add(warm)
                     db.commit()
                     db.refresh(warm)
