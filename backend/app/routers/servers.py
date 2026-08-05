@@ -102,8 +102,6 @@ def provision_commands(config: ServerConfig) -> tuple[list[str], str | None]:
                 commands.append(command)
     # The env map is the general answer to "this software needs a key/setting":
     # values land in the login shell and, for OpenClaw, in its own .env file.
-    for key, value in config.env.items():
-        commands.append(f"echo export {key}={shell_quote(value)} >> ~/.zprofile")
     if "openclaw" in software and config.env:
         env_file = "".join(f"{key}={value}\n" for key, value in config.env.items())
         commands.append("mkdir -p ~/.openclaw && printf %s " + shell_quote(env_file) + " > ~/.openclaw/.env")
