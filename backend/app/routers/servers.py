@@ -388,10 +388,7 @@ async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> No
         return
     try:
         await vm_lifecycle.restore_vm(node, server.vm_id, server.org_id, storage_key(server))
-        t1 = time.monotonic()
-        commands, start = relaunch_commands(server_config(server))
-        await vm_lifecycle.run_launch(node, server.vm_id, setup=commands, start=start)
-        print(f"[timing] server start {server_id}: restore={t1 - t0:.1f}s relaunch={time.monotonic() - t1:.1f}s", flush=True)
+        print(f"[timing] server start {server_id}: restore={time.monotonic() - t0:.1f}s", flush=True)
     except Exception as error:
         detail = error.detail if isinstance(error, HTTPException) else str(error)
         with get_session() as db:
@@ -411,7 +408,35 @@ async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> No
             db.add(stored)
             db.commit()
     discard_manifest(server.org_id, storage_key(server))
+    # The VM is up; relaunching its processes only needs the guest to finish
+    # booting, which should not hold the server in "provisioning".
+    asyncio.create_task(_relaunch_task(server_id, node_id))
     await warm_pool.reconcile_node_warm_pool(node_id)
+
+
+async def _relaunch_task(server_id: str, node_id: str) -> None:
+    with get_session() as db:
+        node = db.get(Node, node_id)
+        server = db.get(Server, server_id)
+    if node is None or server is None:
+        return
+    commands, start = relaunch_commands(server_config(server))
+    if not commands and not start:
+        return
+    t0 = time.monotonic()
+    for attempt in range(5):
+        try:
+            await vm_lifecycle.run_launch(node, server.vm_id, setup=commands, start=start)
+            print(f"[timing] server relaunch {server_id}: {time.monotonic() - t0:.1f}s ({attempt + 1} attempts)", flush=True)
+            return
+        except Exception:
+            await asyncio.sleep(10)
+    with get_session() as db:
+        stored = db.get(Server, server_id)
+        if stored is not None and stored.deleted_at is None and stored.status == "running":
+            stored.status_detail = "start process relaunch failed; the VM is up but its processes may need a manual start"
+            db.add(stored)
+            db.commit()
 
 
 @router.post("/{server_id}/retry")

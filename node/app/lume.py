@@ -81,7 +81,16 @@ async def list_vms() -> list[dict]:
     # Existence is decided by listing the storage and matching names: `lume get` exits
     # nonzero for both "not found" and operational failures, with no machine-readable
     # discrimination, while a failing `lume ls` here propagates as an explicit error.
-    return json.loads(await lume("ls", "-f", "json"))
+    # Concurrent lume invocations can corrupt the JSON output; retry briefly.
+    for attempt in range(3):
+        output = await lume("ls", "-f", "json")
+        try:
+            return json.loads(output)
+        except json.JSONDecodeError:
+            if attempt == 2:
+                raise
+            await asyncio.sleep(0.5)
+    raise RuntimeError("unreachable")
 
 
 async def find(name: str) -> dict | None:
