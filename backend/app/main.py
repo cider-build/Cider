@@ -3,10 +3,11 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .services import warm_pool
 from .config import settings
 from .db import init_db
-from .routers import auth, nodes, sandboxes, snapshots, waitlist
+from .routers import auth, node_connections, node_storage, nodes, sandboxes, servers, snapshots, ssh, waitlist
+from .services import reconciler
+from .services.node_gateway import node_gateway
 
 init_db()
 
@@ -21,23 +22,37 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(node_connections.router)
+app.include_router(node_storage.router)
 app.include_router(nodes.router)
 app.include_router(sandboxes.router)
+app.include_router(servers.router)
 app.include_router(snapshots.router)
+app.include_router(ssh.router)
 app.include_router(waitlist.router)
 
 
-# later on, should implement a true queue-based TTL cleanup. simple implementation for now to work on other stuff
 async def cleanup_loop() -> None:
     while True:
         await sandboxes.cleanup_expired_sandboxes()
         await asyncio.sleep(5)
 
 
+async def reconcile_loop() -> None:
+    while True:
+        await reconciler.reconcile_all_nodes()
+        await asyncio.sleep(10)
+
+
 @app.on_event("startup")
 async def startup() -> None:
     asyncio.create_task(cleanup_loop())
-    await warm_pool.start()
+    asyncio.create_task(reconcile_loop())
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await node_gateway.close()
 
 
 def run() -> None:

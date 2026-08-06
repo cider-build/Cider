@@ -8,19 +8,9 @@ import * as tar from "tar";
 
 import { makeClient } from "./lib/api.js";
 import { readConfig } from "./lib/config.js";
-
-function printRows(rows, columns) {
-  if (rows.length === 0) return;
-  const widths = columns.map((column) =>
-    Math.max(column.length, ...rows.map((row) => String(row[column] ?? "").length)),
-  );
-  process.stdout.write(columns.map((column, i) => column.padEnd(widths[i])).join("  ") + "\n");
-  for (const row of rows) {
-    process.stdout.write(
-      columns.map((column, i) => String(row[column] ?? "").padEnd(widths[i])).join("  ") + "\n",
-    );
-  }
-}
+import { connect } from "./lib/connect.js";
+import { resolveNode, ssh } from "./lib/ssh.js";
+import { printTable } from "./lib/table.js";
 
 function client() {
   return makeClient(readConfig());
@@ -28,26 +18,25 @@ function client() {
 
 const exec = promisify(execFile);
 
-async function gitFiles(dir) {
-  try {
-    const { stdout } = await exec("git", ["-C", dir, "ls-files", "-z", "--cached", "--modified", "--others", "--exclude-standard", "--", "."], { encoding: "buffer", maxBuffer: 1024 * 1024 * 100 });
-    return stdout.toString("utf8").split("\0").filter(Boolean);
-  } catch {
-    return null;
-  }
+async function gitFiles(dir, includeIgnored) {
+  const args = ["-C", dir, "ls-files", "-z", "--cached", "--modified", "--others"];
+  if (!includeIgnored) args.push("--exclude-standard");
+  args.push("--", ".");
+  const { stdout } = await exec("git", args, { encoding: "buffer", maxBuffer: 1024 * 1024 * 100 });
+  return stdout.toString("utf8").split("\0").filter(Boolean);
 }
 
-async function archivePath(path) {
+async function archivePath(path, includeIgnored = false) {
   const dir = resolve(path);
   const parent = dirname(dir);
   const root = basename(dir);
   const tmp = await mkdtemp(join(tmpdir(), "cider-"));
   const file = join(tmp, "repo.tgz");
   try {
-    const files = await gitFiles(dir);
+    const files = await gitFiles(dir, includeIgnored);
     await tar.c(
       { cwd: parent, file, gzip: true, portable: true },
-      files ? files.map((path) => `${root}/${path}`) : [root],
+      files.map((path) => `${root}/${path}`),
     );
     return { file, tmp };
   } catch (error) {
@@ -64,6 +53,15 @@ export async function run(argv) {
     .description("Barebones CLI for the Cider backend")
     .version("0.1.0");
 
+  program
+    .command("connect")
+    .description("Install the Cider image and connect this Mac to your organization")
+    .option("--name <name>", "Node name")
+    .option("--image <name:tag>", "Pinned Lume base image")
+    .option("--node-command <path>", "Path to the cider-node executable")
+    .option("-y, --yes", "Install without prompting")
+    .action(connect);
+
   const nodes = program.command("nodes").description("Manage nodes");
 
   nodes
@@ -71,29 +69,20 @@ export async function run(argv) {
     .description("List nodes")
     .action(async () => {
       const rows = await client().listNodes();
-      printRows(rows, ["id", "name", "url"]);
-    });
-
-  nodes
-    .command("add <name> <url>")
-    .description("Register a node")
-    .action(async (name, url) => {
-      const node = await client().createNode(name, url);
-      process.stdout.write(`${node.id}\n`);
+      printTable(rows, ["id", "name", "connected"]);
     });
 
   nodes
     .command("delete <id>")
-    .description("Delete a node")
-    .action(async (id) => {
-      await client().deleteNode(id);
-    });
+    .description("Remove a node and revoke its credential")
+    .action((id) => client().deleteNode(id));
 
   program
     .command("open [path]")
-    .description("Create a sandbox and copy a local path into it")
-    .action(async (path = ".") => {
-      const archive = await archivePath(path);
+    .description("Create a sandbox from a local Git worktree")
+    .option("--include-ignored", "Include Git-ignored files in the upload")
+    .action(async (path = ".", options = {}) => {
+      const archive = await archivePath(path, Boolean(options.includeIgnored));
       try {
         const sandbox = await client().createSandbox(archive.file);
         process.stdout.write(`${sandbox.id}\n`);
@@ -102,6 +91,13 @@ export async function run(argv) {
       }
     });
 
+  program
+    .command("ssh [target]")
+    .description("SSH into a sandbox or a running server (by name)")
+    .option("-l, --list", "List available sandboxes and servers")
+    .option("-n, --new [node]", "Create a sandbox, optionally on a node, then connect")
+    .action((sandbox, options) => ssh(readConfig(), sandbox, options));
+
   const sandboxes = program.command("sandboxes").description("Manage sandboxes");
 
   sandboxes
@@ -109,15 +105,34 @@ export async function run(argv) {
     .description("List sandboxes")
     .action(async () => {
       const rows = await client().listSandboxes();
-      printRows(rows, ["id", "node_id", "created_at"]);
+      printTable(rows, ["id", "node_id", "status", "created_at"]);
     });
 
   sandboxes
     .command("create")
-    .description("Create a sandbox")
+    .description("Create a blank sandbox VM")
     .action(async () => {
-      const sandbox = await client().createSandbox();
+      const sandbox = await client().createSandbox(undefined);
       process.stdout.write(`${sandbox.id}\n`);
+    });
+
+  sandboxes
+    .command("pause <id>")
+    .description("Snapshot a sandbox to Cider storage and free its VM slot")
+    .action(async (id) => {
+      const sandbox = await client().pauseSandbox(id);
+      process.stdout.write(`${sandbox.id} paused\n`);
+    });
+
+  sandboxes
+    .command("resume <id>")
+    .description("Restore a paused sandbox onto any node with a free slot")
+    .option("--node <node>", "Destination node")
+    .action(async (id, options) => {
+      let nodeId;
+      if (options.node) nodeId = (await resolveNode(client(), options.node)).id;
+      const sandbox = await client().resumeSandbox(id, nodeId);
+      process.stdout.write(`${sandbox.id} resumed on ${sandbox.node_id}\n`);
     });
 
   sandboxes
@@ -129,20 +144,8 @@ export async function run(argv) {
     });
 
   sandboxes
-    .command("display <id>")
-    .description("Open a VNC display session for a sandbox")
-    .option("--open", "Open the VNC URL with the OS default handler")
-    .action(async (id, options) => {
-      const display = await client().openDisplay(id);
-      if (options.open) {
-        await exec(process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open", process.platform === "win32" ? ["/c", "start", "", display.url] : [display.url]);
-      }
-      process.stdout.write(`${display.url}\n`);
-    });
-
-  sandboxes
     .command("snapshot <id>")
-    .description("Snapshot a sandbox")
+    .description("Stop a sandbox and save a portable snapshot in Cider storage")
     .action(async (id) => {
       const snapshot = await client().snapshotSandbox(id);
       process.stdout.write(`${snapshot.id}\n`);
@@ -151,9 +154,7 @@ export async function run(argv) {
   sandboxes
     .command("delete <id>")
     .description("Delete a sandbox")
-    .action(async (id) => {
-      await client().deleteSandbox(id);
-    });
+    .action((id) => client().deleteSandbox(id));
 
   const snapshots = program.command("snapshots").description("Manage snapshots");
 
@@ -162,23 +163,22 @@ export async function run(argv) {
     .description("List snapshots")
     .action(async () => {
       const rows = await client().listSnapshots();
-      printRows(rows, ["id", "source_sandbox_id", "created_at"]);
+      printTable(rows, ["id", "source_sandbox_id", "created_at"]);
     });
 
   snapshots
     .command("restore <id>")
-    .description("Create a sandbox from a snapshot")
-    .action(async (id) => {
-      const sandbox = await client().restoreSnapshot(id);
+    .description("Restore a stopped sandbox onto a connected node")
+    .option("--node <id>", "Destination node ID")
+    .action(async (id, options) => {
+      const sandbox = await client().restoreSnapshot(id, options.node);
       process.stdout.write(`${sandbox.id}\n`);
     });
 
   snapshots
     .command("delete <id>")
     .description("Delete a snapshot")
-    .action(async (id) => {
-      await client().deleteSnapshot(id);
-    });
+    .action((id) => client().deleteSnapshot(id));
 
   await program.parseAsync(argv);
 }

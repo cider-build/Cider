@@ -1,16 +1,45 @@
-@import url("https://fonts.googleapis.com/css2?family=Montserrat:ital,wght@0,100..900;1,100..900&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap");
 
 :root {
-  color: #171717;
-  background: #fafafa;
-  font-family: "Montserrat", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ink: #171717;
+  --muted: #737373;
+  --faint: #a3a3a3;
+  --line: #eeeeee;
+  --line-strong: #d4d4d4;
+  --bg: #fafafa;
+  --card: #ffffff;
+  --orange: #ff8200;
+  --orange-deep: #b76900;
+  --ease: cubic-bezier(0.23, 1, 0.32, 1);
+  color: var(--ink);
+  background: var(--bg);
+  font-family: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
 }
 
 body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "Montserrat", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-size: 14px;
   margin: 0;
 }
 
 button,
 input {
+  color: inherit;
   font: inherit;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
 }

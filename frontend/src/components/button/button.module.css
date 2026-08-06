@@ -13,3 +13,38 @@
   box-shadow: 1px 1px 0 0 #b76900;
   transform: translate(2px, 2px);
 }
+
+.primary {
+  align-items: center;
+  background: var(--orange, #ff8200);
+  border: 0;
+  border-radius: 7px;
+  box-shadow: 3px 3px 0 0 var(--orange-deep, #b76900);
+  color: #ffffff;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 700;
+  gap: 7px;
+  justify-content: center;
+  padding: 9px 16px;
+  text-decoration: none;
+  transition: box-shadow 130ms var(--ease), transform 130ms var(--ease), opacity 130ms var(--ease);
+}
+
+.primary:hover {
+  box-shadow: 1px 1px 0 0 var(--orange-deep, #b76900);
+  transform: translate(2px, 2px);
+}
+
+.primary:active {
+  box-shadow: 0 0 0 0 var(--orange-deep, #b76900);
+  transform: translate(3px, 3px) scale(0.97);
+}
+
+.primary:disabled {
+  background: #c9c9c9;
+  box-shadow: 3px 3px 0 0 #d9d9d9;
+  cursor: default;
+  transform: none;
+}

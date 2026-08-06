@@ -1,9 +1,26 @@
-.header {
-  align-items: center;
+.phead {
+  align-items: flex-start;
   display: flex;
-  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 24px;
+  min-height: 71px;
 }
 
-.header h2 {
+.phead h1 {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   margin: 0;
+}
+
+.phead p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 6px 0 0;
+  max-width: 560px;
+}
+
+.grow {
+  flex: 1;
 }

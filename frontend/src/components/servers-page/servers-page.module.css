@@ -1,0 +1,55 @@
+.quiet {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
+.cols {
+  gap: 13px;
+  grid-template-columns:
+    minmax(116px, 1.2fr) minmax(84px, 106px) minmax(124px, 128px) minmax(90px, 0.9fr)
+    minmax(52px, 64px) minmax(58px, 96px) 62px;
+}
+
+@media (max-width: 1360px) {
+  .cols {
+    gap: 11px;
+  }
+}
+
+.applogos {
+  align-items: center;
+  display: flex;
+  gap: 7px;
+  min-width: 0;
+}
+
+.applogos img {
+  display: block;
+  flex: none;
+  height: 15px;
+  width: 15px;
+}
+
+.xcode {
+  border-radius: 3px;
+}
+
+.emoji {
+  flex: none;
+  font-size: 13px;
+  line-height: 15px;
+}
+
+.sep {
+  background: var(--line-strong);
+  flex: none;
+  height: 13px;
+  width: 1px;
+}
+
+.acts {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}

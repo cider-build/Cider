@@ -1,62 +1,166 @@
-.page {
-  display: grid;
-  gap: 22px;
-  grid-template-rows: auto 1fr;
-  min-height: 100%;
+.kbd {
+  background: #f1f1f1;
+  border-radius: 5px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  padding: 1px 6px;
 }
 
-.container {
-  border: 1px solid #d4d4d4;
-  border-radius: 12px;
-  display: grid;
-  grid-template-rows: auto 1fr;
-  overflow: hidden;
-}
-
-.tableHeader,
-.row {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: minmax(0, 1fr) 130px 110px 150px;
-}
-
-.tableHeader {
-  border-bottom: 1px solid #d4d4d4;
-  color: #737373;
+.quiet {
+  color: var(--muted);
   font-size: 13px;
-  font-weight: 700;
-  padding: 12px 18px;
-}
-
-.rows {
-  align-content: start;
-  display: grid;
-  overflow: auto;
-}
-
-.row {
-  align-items: center;
-  border-bottom: 1px solid #eeeeee;
-  min-height: 34px;
-  padding: 6px 18px;
-}
-
-.row strong {
-  font-size: 14px;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.row span,
-.row time {
-  color: #737373;
-  font-size: 13px;
-}
-
-.error {
-  color: #b42318;
   margin: 0;
-  white-space: pre-wrap;
+  padding: 44px 20px;
+  text-align: center;
+}
+
+.sbStatus {
+  position: relative;
+}
+
+.statusTrigger {
+  align-items: center;
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 13px;
+  font-weight: 600;
+  gap: 9px;
+  padding: 8px 12px;
+  transition: border-color 150ms var(--ease), box-shadow 150ms var(--ease);
+}
+
+.statusTrigger:hover {
+  border-color: var(--faint);
+}
+
+.statusTrigger[aria-expanded="true"] {
+  border-color: var(--ink);
+  box-shadow: 2px 2px 0 0 #eaeaea;
+}
+
+.pre {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.caret {
+  align-items: center;
+  color: var(--faint);
+  display: inline-flex;
+  transition: transform 150ms var(--ease);
+}
+
+.statusTrigger[aria-expanded="true"] .caret {
+  transform: rotate(180deg);
+}
+
+.statusMenu {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  box-shadow: 0 12px 28px -12px rgba(0, 0, 0, 0.25);
+  left: 0;
+  margin-top: 6px;
+  min-width: 160px;
+  padding: 6px;
+  position: absolute;
+  top: 100%;
+  z-index: 40;
+}
+
+.statusOpt {
+  align-items: center;
+  background: transparent;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  display: flex;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 10px;
+  text-align: left;
+  transition: background 130ms var(--ease), box-shadow 130ms var(--ease), transform 130ms var(--ease);
+  width: 100%;
+}
+
+.statusOpt + .statusOpt {
+  margin-top: 2px;
+}
+
+.statusOpt:hover {
+  background: var(--bg);
+}
+
+.statusOpt[aria-selected="true"] {
+  background: var(--card);
+  box-shadow: 0 0 0 1px var(--ink), 2px 2px 0 0 var(--ink);
+  transform: translate(-1px, -1px);
+}
+
+.thHelp {
+  align-items: center;
+  display: inline-flex;
+  gap: 6px;
+  position: relative;
+}
+
+.hintI {
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 50%;
+  color: var(--faint);
+  display: inline-flex;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  height: 13px;
+  justify-content: center;
+  line-height: 1;
+  width: 13px;
+}
+
+.thHelp:hover .hintI {
+  border-color: var(--faint);
+  color: var(--muted);
+}
+
+.tip {
+  background: var(--ink);
+  border-radius: 7px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  left: 0;
+  line-height: 1.5;
+  opacity: 0;
+  padding: 8px 11px;
+  pointer-events: none;
+  position: absolute;
+  top: calc(100% + 8px);
+  transition: opacity 150ms var(--ease) 0ms, visibility 0ms 150ms;
+  visibility: hidden;
+  white-space: normal;
+  width: 240px;
+  z-index: 30;
+}
+
+.thHelp:hover .tip {
+  opacity: 1;
+  transition: opacity 150ms var(--ease) 300ms, visibility 0ms 300ms;
+  visibility: visible;
+}
+
+.acts {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+}
+
+.actionError {
+  color: var(--ink);
+  font-size: 13px;
+  margin: 0 0 10px;
 }

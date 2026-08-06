@@ -10,7 +10,13 @@ engine = create_engine(
 
 
 def get_session() -> Session:
-    return Session(engine)
+    # Keep loaded attributes available after route sessions close.
+    return Session(engine, expire_on_commit=False)
+
+
+def session_dependency():
+    with get_session() as session:
+        yield session
 
 
 def init_db() -> None:

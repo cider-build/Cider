@@ -31,3 +31,4 @@ __pycache__/
 scripts/
 # os
 .DS_Store
+docs/
