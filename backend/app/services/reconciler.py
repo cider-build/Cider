@@ -8,7 +8,7 @@ from sqlmodel import select
 from ..db import get_session
 from ..models import Node, Sandbox, Server
 from ..models.base import utc_now
-from . import node_transport, warm_pool
+from . import node_transport, storage_usage, warm_pool
 from .node_gateway import node_gateway
 
 # Ignore rows while asynchronous provisioning or restoration can remain active.
@@ -85,3 +85,47 @@ async def reconcile_node(node_id: str) -> None:
         refill = True
     if refill:
         await warm_pool.ensure_node_has_warm_sandboxes(node_id)
+
+    with get_session() as db:
+        server_targets = [
+            (server.id, server.vm_id)
+            for server in db.exec(
+                select(Server).where(
+                    Server.node_id == node_id,
+                    Server.deleted_at.is_(None),
+                    Server.status == "running",
+                    Server.storage_used_bytes.is_(None),
+                )
+            ).all()
+            if vm_status.get(server.vm_id) == "running"
+        ]
+        sandbox_targets = [
+            sandbox.id
+            for sandbox in db.exec(
+                select(Sandbox).where(
+                    Sandbox.node_id == node_id,
+                    Sandbox.deleted_at.is_(None),
+                    Sandbox.status == "active",
+                    Sandbox.storage_used_bytes.is_(None),
+                )
+            ).all()
+            if vm_status.get(sandbox.id) == "running"
+        ]
+
+    for server_id, vm_id in server_targets:
+        used_bytes = await storage_usage.measure_vm_storage(node, vm_id)
+        with get_session() as db:
+            server = db.get(Server, server_id)
+            if server is not None:
+                server.storage_used_bytes = used_bytes
+                db.add(server)
+                db.commit()
+
+    for sandbox_id in sandbox_targets:
+        used_bytes = await storage_usage.measure_vm_storage(node, sandbox_id)
+        with get_session() as db:
+            sandbox = db.get(Sandbox, sandbox_id)
+            if sandbox is not None:
+                sandbox.storage_used_bytes = used_bytes
+                db.add(sandbox)
+                db.commit()

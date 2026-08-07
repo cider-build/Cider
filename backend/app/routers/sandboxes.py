@@ -13,7 +13,7 @@ from ..config import settings
 from ..db import get_session
 from ..models import Node, Sandbox, Snapshot
 from ..models.base import utc_now
-from ..services import node_transport, vm_lifecycle, warm_pool
+from ..services import node_transport, storage_usage, vm_lifecycle, warm_pool
 from ..snapshot_store import discard_manifest, write_manifest
 
 router = APIRouter(prefix="/sandboxes")
@@ -27,13 +27,10 @@ class SandboxWithNode(BaseModel):
     id: str
     node_id: str
     node_name: str
+    storage_used_bytes: int | None
     status: str
     created_at: datetime
     deleted_at: datetime | None
-
-
-class StorageUsage(BaseModel):
-    used_bytes: int
 
 
 def with_node(sandbox: Sandbox, node: Node) -> SandboxWithNode:
@@ -147,14 +144,21 @@ async def get_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_c
 async def get_sandbox_storage_usage(
     sandbox_id: str,
     ctx: AuthContext = Depends(current_auth_context),
-) -> StorageUsage:
+) -> storage_usage.StorageUsage:
     with get_session() as db:
         sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
-        if sandbox.status != "active":
-            raise HTTPException(409, "storage usage requires a running sandbox")
         node = sandbox_node(db, sandbox)
-    response = await node_transport.request(node, "GET", f"/sandboxes/{sandbox.id}/storage-usage")
-    return StorageUsage.model_validate(response.json())
+        if sandbox.status != "active":
+            if sandbox.storage_used_bytes is None:
+                raise HTTPException(409, "storage usage was not recorded before this sandbox stopped")
+            return storage_usage.StorageUsage(used_bytes=sandbox.storage_used_bytes)
+    used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
+    with get_session() as db:
+        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
+        sandbox.storage_used_bytes = used_bytes
+        db.add(sandbox)
+        db.commit()
+    return storage_usage.StorageUsage(used_bytes=used_bytes)
 
 
 @router.post("", status_code=201)
@@ -227,6 +231,16 @@ async def create_sandbox(
     if config is not None:
         await node_transport.request(node, "POST", f"/sandboxes/{sandbox.id}/launch-config", json=config)
 
+    used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
+    with get_session() as db:
+        sandbox = db.get(Sandbox, sandbox.id)
+        if sandbox is None:
+            raise HTTPException(404, "sandbox not found after creation")
+        sandbox.storage_used_bytes = used_bytes
+        db.add(sandbox)
+        db.commit()
+        db.refresh(sandbox)
+
     return sandbox
 
 
@@ -240,6 +254,9 @@ async def snapshot_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_a
         node_id = node.id
 
         snapshot = Snapshot(source_sandbox_id=sandbox.id, org_id=ctx.membership.organization_id, launch_config=sandbox.launch_config)
+        sandbox.storage_used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
+        db.add(sandbox)
+        db.commit()
         response = await node_transport.request(
             node,
             "POST",
@@ -323,6 +340,7 @@ async def pause_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth
 
         # Prevent reconciliation from treating the VM removal as drift.
         sandbox.status = "pausing"
+        sandbox.storage_used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
         db.add(sandbox)
         db.commit()
         try:
@@ -377,6 +395,10 @@ async def resume_sandbox(
         # Restore preserves disk changes, but not running processes.
         if sandbox.launch_config:
             await vm_lifecycle.run_launch(node, sandbox.id, start=sandbox.launch_config.get("start"))
+        sandbox.storage_used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
+        db.add(sandbox)
+        db.commit()
+        db.refresh(sandbox)
     discard_manifest(sandbox.org_id, pause_key(sandbox.id))
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
     return sandbox

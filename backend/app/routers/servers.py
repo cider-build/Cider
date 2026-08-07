@@ -11,7 +11,7 @@ from ..auth import AuthContext, current_auth_context
 from ..db import get_session
 from ..models import Node, Server
 from ..models.base import utc_now
-from ..services import node_transport, vm_lifecycle, warm_pool
+from ..services import node_transport, storage_usage, vm_lifecycle, warm_pool
 from ..snapshot_store import discard_manifest, manifest_path
 
 router = APIRouter(prefix="/servers")
@@ -140,13 +140,10 @@ class ServerWithNode(BaseModel):
     node_name: str
     status: str
     status_detail: str | None
+    storage_used_bytes: int | None
     config: dict | None
     created_at: datetime
     deleted_at: datetime | None
-
-
-class StorageUsage(BaseModel):
-    used_bytes: int
 
 
 def with_node(server: Server, node: Node) -> ServerWithNode:
@@ -246,6 +243,17 @@ async def create_server(body: CreateServerInput, ctx: AuthContext = Depends(curr
         db.refresh(server)
     if server.status == "provisioning":
         asyncio.create_task(provision_server(server.id, node.id))
+    else:
+        server.storage_used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
+        with get_session() as db:
+            stored = db.get(Server, server.id)
+            if stored is None:
+                raise HTTPException(404, "server not found after creation")
+            stored.storage_used_bytes = server.storage_used_bytes
+            db.add(stored)
+            db.commit()
+            db.refresh(stored)
+            server = stored
     asyncio.create_task(warm_pool.ensure_node_has_warm_sandboxes(node.id))
     return with_node(server, node)
 
@@ -277,11 +285,18 @@ async def provision_server(server_id: str, node_id: str) -> None:
                 db.commit()
         commands, start = provision_commands(server_config(server))
         await vm_lifecycle.run_launch(node, vm_id, setup=commands, start=start)
+        used_bytes = await storage_usage.measure_vm_storage(node, vm_id)
     except Exception as error:
         if reserved:
             warm_pool.warming[node_id] = max(0, warm_pool.warming[node_id] - 1)
         set_server_status(server_id, "failed", error_detail(error)[:2000])
         return
+    with get_session() as db:
+        stored = db.get(Server, server_id)
+        if stored is not None:
+            stored.storage_used_bytes = used_bytes
+            db.add(stored)
+            db.commit()
     if not set_server_status(server_id, "running"):
         await _discard_vm(node, vm_id)
 
@@ -304,13 +319,20 @@ async def get_server(server_id: str, ctx: AuthContext = Depends(current_auth_con
 async def get_server_storage_usage(
     server_id: str,
     ctx: AuthContext = Depends(current_auth_context),
-) -> StorageUsage:
+) -> storage_usage.StorageUsage:
     with get_session() as db:
         server, node = owned_server(db, server_id, ctx.membership.organization_id)
         if server.status != "running":
-            raise HTTPException(409, "storage usage requires a running server")
-    response = await node_transport.request(node, "GET", f"/sandboxes/{server.vm_id}/storage-usage")
-    return StorageUsage.model_validate(response.json())
+            if server.storage_used_bytes is None:
+                raise HTTPException(409, "storage usage was not recorded before this server stopped")
+            return storage_usage.StorageUsage(used_bytes=server.storage_used_bytes)
+    used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
+    with get_session() as db:
+        server, _node = owned_server(db, server_id, ctx.membership.organization_id)
+        server.storage_used_bytes = used_bytes
+        db.add(server)
+        db.commit()
+    return storage_usage.StorageUsage(used_bytes=used_bytes)
 
 
 @router.post("/{server_id}/stop")
@@ -336,6 +358,14 @@ async def _stop_task(server_id: str, node_id: str) -> None:
     if node is None or server is None:
         return
     try:
+        used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
+        with get_session() as db:
+            stored = db.get(Server, server_id)
+            if stored is None:
+                return
+            stored.storage_used_bytes = used_bytes
+            db.add(stored)
+            db.commit()
         await vm_lifecycle.export_vm(node, server.vm_id, server.org_id, storage_key(server))
     except Exception as error:
         set_server_status(server_id, "running", f"stop failed: {error_detail(error)[:1900]}")
@@ -373,6 +403,7 @@ async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> No
         await vm_lifecycle.restore_vm(node, server.vm_id, server.org_id, storage_key(server))
         commands, start = relaunch_commands(server_config(server))
         await vm_lifecycle.run_launch(node, server.vm_id, setup=commands, start=start)
+        used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
     except Exception as error:
         set_server_status(
             server_id,
@@ -381,6 +412,13 @@ async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> No
             previous_node_id,
         )
         return
+    with get_session() as db:
+        stored = db.get(Server, server_id)
+        if stored is None:
+            return
+        stored.storage_used_bytes = used_bytes
+        db.add(stored)
+        db.commit()
     set_server_status(server_id, "running")
     discard_manifest(server.org_id, storage_key(server))
     await warm_pool.reconcile_node_warm_pool(node_id)

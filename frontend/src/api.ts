@@ -33,6 +33,7 @@ export type Sandbox = {
   id: string;
   node_id: string;
   node_name: string;
+  storage_used_bytes: number | null;
   status: string;
   created_at: string;
   deleted_at: string | null;
@@ -53,6 +54,7 @@ export type Server = {
   node_name: string;
   status: string;
   status_detail: string | null;
+  storage_used_bytes: number | null;
   config: ServerConfig | null;
   created_at: string;
   deleted_at: string | null;
@@ -64,7 +66,6 @@ export type Snapshot = {
   deleted_at: string | null;
   size_bytes: number | null;
 };
-export type StorageUsage = { used_bytes: number };
 
 type RequestOptions = { method?: string; json?: unknown };
 
@@ -116,7 +117,6 @@ export const updateNodeConfiguration = (id: string, configuration: NodeConfigura
 
 export const listServers = () => request<Server[]>("/servers?include_deleted=true");
 export const getServer = (id: string) => request<Server>(`/servers/${id}`);
-export const getServerStorageUsage = (id: string) => request<StorageUsage>(`/servers/${id}/storage-usage`);
 export const createServer = (body: CreateServerInput) => request<Server>("/servers", { method: "POST", json: body });
 export const stopServer = (id: string) => request<Server>(`/servers/${id}/stop`, { method: "POST" });
 export const startServer = (id: string) => request<Server>(`/servers/${id}/start`, { method: "POST" });
@@ -134,4 +134,3 @@ export const resumeSandbox = (id: string) =>
 export const deleteSandbox = (id: string) => request<void>(`/sandboxes/${id}`, { method: "DELETE" });
 export const listSandboxes = () => request<Sandbox[]>("/sandboxes");
 export const getSandbox = (id: string) => request<Sandbox>(`/sandboxes/${id}`);
-export const getSandboxStorageUsage = (id: string) => request<StorageUsage>(`/sandboxes/${id}/storage-usage`);

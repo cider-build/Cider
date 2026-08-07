@@ -5,9 +5,7 @@ import { Link, useParams } from "react-router";
 import {
   getNode,
   getSandbox,
-  getSandboxStorageUsage,
   getServer,
-  getServerStorageUsage,
 } from "../../api";
 import type { Node, Sandbox, Server } from "../../api";
 import { APPLE_LOGO, OS_RELEASES } from "../../image-catalog";
@@ -105,7 +103,7 @@ function ResourceStats({ node, storageUsedBytes }: { node: Node; storageUsedByte
   const { configuration } = node;
 
   return (
-    <section className={styles.allocationBand}>
+    <section className={`${styles.allocationBand} ${storageUsedBytes === null ? styles.twoStats : ""}`}>
       <ResourceStat
         icon={<Cpu size={15} />}
         title="CPU"
@@ -118,12 +116,14 @@ function ResourceStats({ node, storageUsedBytes }: { node: Node; storageUsedByte
         value={formatBytes(configuration.sandbox_memory_bytes)}
         unit="memory"
       />
-      <ResourceStat
-        icon={<HardDrive size={15} />}
-        title="Storage"
-        value={storageUsedBytes === null ? "Unavailable" : formatBytes(storageUsedBytes)}
-        unit={storageUsedBytes === null ? "while stopped" : "used"}
-      />
+      {storageUsedBytes !== null && (
+        <ResourceStat
+          icon={<HardDrive size={15} />}
+          title="Storage"
+          value={formatBytes(storageUsedBytes)}
+          unit="used"
+        />
+      )}
     </section>
   );
 }
@@ -150,17 +150,10 @@ function ResourceDetailPage({ kind, id }: { kind: ResourceKind; id: string }) {
     queryFn: async () => {
       const resource = kind === "server" ? await getServer(id) : await getSandbox(id);
       const node = await getNode(resource.node_id);
-      const isRunning = resource.deleted_at === null
-        && (kind === "server" ? resource.status === "running" : resource.status === "active");
-      const storageUsage = isRunning
-        ? kind === "server"
-          ? await getServerStorageUsage(id)
-          : await getSandboxStorageUsage(id)
-        : null;
       return {
         resource,
         node,
-        storageUsedBytes: storageUsage === null ? null : storageUsage.used_bytes,
+        storageUsedBytes: resource.storage_used_bytes,
       };
     },
   });

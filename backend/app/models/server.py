@@ -17,6 +17,7 @@ class Server(SQLModel, table=True):
     name: str = Field(index=True)
     vm_id: str = Field(index=True)
     image: dict | None = Field(default=None, sa_column=Column(JSON))
+    storage_used_bytes: int | None = None
     status: str = Field(default="provisioning", index=True)
     status_detail: str | None = None
     created_at: datetime = Field(default_factory=utc_now)
