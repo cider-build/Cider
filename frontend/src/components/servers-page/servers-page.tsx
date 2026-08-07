@@ -242,7 +242,7 @@ export function ServersPage() {
                     <SoftwareCell config={server.config} />
                     <div className={listClasses.cell}>{createdAt(server.created_at)}</div>
                     <div>
-                      <span className={listClasses.statusCell} title={server.status_detail ?? undefined}>
+                      <span className={listClasses.statusCell}>
                         <StatusText tone={status.tone}>{status.label}</StatusText>
                         {(server.status === "provisioning" || server.status === "stopping" || busyId === server.id) && (
                           <Spinner />

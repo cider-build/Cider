@@ -54,15 +54,13 @@ function resourceName(kind: ResourceKind, resource: Resource) {
   return kind === "server" ? (resource as Server).name : resource.id;
 }
 
-function ResourceDetails({ kind, resource }: { kind: ResourceKind; resource: Resource }) {
+function ResourceDetails({ resource }: { resource: Resource }) {
   const status = resource.deleted_at === null ? statusLabel(resource.status) : "Deleted";
-  const statusDetail = kind === "server" ? (resource as Server).status_detail : null;
   return (
     <section className={styles.detailsSection}>
       <h2>Resource</h2>
       <dl className={styles.detailsList}>
         <div><dt>Status</dt><dd>{status}</dd></div>
-        {statusDetail !== null && <div><dt>Status detail</dt><dd>{statusDetail}</dd></div>}
         <div><dt>Created</dt><dd>{createdAt(resource.created_at)}</dd></div>
         {resource.deleted_at !== null && <div><dt>Deleted</dt><dd>{createdAt(resource.deleted_at)}</dd></div>}
         <div><dt>Age</dt><dd>{resourceAge(resource.created_at)}</dd></div>
@@ -191,7 +189,7 @@ function ResourceDetailPage({ kind, id }: { kind: ResourceKind; id: string }) {
         <main className={styles.content}>
           <div className={styles.contentInner}>
             <ResourceStats node={node} storageUsedBytes={storageUsedBytes} />
-            <ResourceDetails kind={kind} resource={resource} />
+            <ResourceDetails resource={resource} />
             {server !== null && server.config !== null && <OperatingSystem image={server.config.image} />}
           </div>
         </main>

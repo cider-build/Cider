@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 from datetime import datetime
 from typing import Annotated
 
@@ -15,6 +16,7 @@ from ..services import node_transport, storage_usage, vm_lifecycle, warm_pool
 from ..snapshot_store import discard_manifest, manifest_path
 
 router = APIRouter(prefix="/servers")
+logger = logging.getLogger(__name__)
 
 ServerName = Annotated[str, StringConstraints(min_length=1, max_length=63, pattern=r"^[a-zA-Z0-9][a-zA-Z0-9 ._-]*$")]
 
@@ -139,7 +141,6 @@ class ServerWithNode(BaseModel):
     node_id: str
     node_name: str
     status: str
-    status_detail: str | None
     storage_used_bytes: int | None
     config: dict | None
     created_at: datetime
@@ -147,7 +148,11 @@ class ServerWithNode(BaseModel):
 
 
 def with_node(server: Server, node: Node) -> ServerWithNode:
-    return ServerWithNode(**server.model_dump(exclude={"image"}), config=server.image, node_name=node.name)
+    return ServerWithNode(
+        **server.model_dump(exclude={"image", "status_detail"}),
+        config=server.image,
+        node_name=node.name,
+    )
 
 
 def server_config(server: Server) -> ServerConfig:
@@ -345,6 +350,7 @@ async def stop_server(server_id: str, ctx: AuthContext = Depends(current_auth_co
             raise HTTPException(409, f"server is {server.status}; it cannot be stopped")
         # Prevent reconciliation from treating the VM removal as a failure.
         server.status = "stopping"
+        server.status_detail = None
         db.add(server)
         db.commit()
     asyncio.create_task(_stop_task(server_id, node.id))
@@ -367,8 +373,9 @@ async def _stop_task(server_id: str, node_id: str) -> None:
             db.add(stored)
             db.commit()
         await vm_lifecycle.export_vm(node, server.vm_id, server.org_id, storage_key(server))
-    except Exception as error:
-        set_server_status(server_id, "running", f"stop failed: {error_detail(error)[:1900]}")
+    except Exception:
+        logger.exception("Server stop failed for %s", server_id)
+        set_server_status(server_id, "running")
         return
     set_server_status(server_id, "stopped")
     await warm_pool.ensure_node_has_warm_sandboxes(node_id)
@@ -387,6 +394,7 @@ async def start_server(server_id: str, ctx: AuthContext = Depends(current_auth_c
         previous_node_id = server.node_id
         server.node_id = node.id
         server.status = "provisioning"
+        server.status_detail = None
         db.add(server)
         db.commit()
     asyncio.create_task(_start_task(server_id, node.id, previous_node_id))

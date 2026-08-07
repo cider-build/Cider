@@ -53,7 +53,6 @@ export type Server = {
   node_id: string;
   node_name: string;
   status: string;
-  status_detail: string | null;
   storage_used_bytes: number | null;
   config: ServerConfig | null;
   created_at: string;
