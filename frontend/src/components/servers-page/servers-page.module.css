@@ -53,3 +53,13 @@
   gap: 6px;
   justify-content: flex-end;
 }
+
+.resourceLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.resourceLink:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}

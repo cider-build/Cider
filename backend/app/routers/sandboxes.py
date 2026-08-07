@@ -32,6 +32,14 @@ class SandboxWithNode(BaseModel):
     deleted_at: datetime | None
 
 
+class StorageUsage(BaseModel):
+    used_bytes: int
+
+
+def with_node(sandbox: Sandbox, node: Node) -> SandboxWithNode:
+    return SandboxWithNode(**sandbox.model_dump(), node_name=node.name)
+
+
 def owned_sandbox(db, sandbox_id: str, org_id: str) -> Sandbox:
     sandbox = db.get(Sandbox, sandbox_id)
     if sandbox is None or sandbox.deleted_at is not None or sandbox.org_id != org_id:
@@ -122,7 +130,31 @@ async def list_sandboxes(ctx: AuthContext = Depends(current_auth_context)) -> li
             .where(Sandbox.org_id == ctx.membership.organization_id)
             .order_by(Sandbox.created_at.desc())
         ).all()
-    return [SandboxWithNode(**sandbox.model_dump(), node_name=node.name) for sandbox, node in rows]
+    return [with_node(sandbox, node) for sandbox, node in rows]
+
+
+@router.get("/{sandbox_id}")
+async def get_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_context)) -> SandboxWithNode:
+    with get_session() as db:
+        sandbox = db.get(Sandbox, sandbox_id)
+        if sandbox is None or sandbox.org_id != ctx.membership.organization_id:
+            raise HTTPException(404, "sandbox not found")
+        node = sandbox_node(db, sandbox)
+    return with_node(sandbox, node)
+
+
+@router.get("/{sandbox_id}/storage-usage")
+async def get_sandbox_storage_usage(
+    sandbox_id: str,
+    ctx: AuthContext = Depends(current_auth_context),
+) -> StorageUsage:
+    with get_session() as db:
+        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
+        if sandbox.status != "active":
+            raise HTTPException(409, "storage usage requires a running sandbox")
+        node = sandbox_node(db, sandbox)
+    response = await node_transport.request(node, "GET", f"/sandboxes/{sandbox.id}/storage-usage")
+    return StorageUsage.model_validate(response.json())
 
 
 @router.post("", status_code=201)

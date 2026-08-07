@@ -14,6 +14,27 @@
   text-align: center;
 }
 
+.resourceLink {
+  color: inherit;
+  text-decoration: none;
+}
+
+.linkRow {
+  cursor: pointer;
+  position: relative;
+}
+
+.linkRow .resourceLink::after {
+  content: "";
+  inset: 0;
+  position: absolute;
+}
+
+.resourceLink:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .sbStatus {
   position: relative;
 }
@@ -157,6 +178,8 @@
   display: flex;
   gap: 6px;
   justify-content: flex-end;
+  position: relative;
+  z-index: 1;
 }
 
 .actionError {

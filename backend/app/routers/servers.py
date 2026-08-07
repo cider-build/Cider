@@ -145,6 +145,10 @@ class ServerWithNode(BaseModel):
     deleted_at: datetime | None
 
 
+class StorageUsage(BaseModel):
+    used_bytes: int
+
+
 def with_node(server: Server, node: Node) -> ServerWithNode:
     return ServerWithNode(**server.model_dump(exclude={"image"}), config=server.image, node_name=node.name)
 
@@ -294,6 +298,19 @@ async def get_server(server_id: str, ctx: AuthContext = Depends(current_auth_con
     with get_session() as db:
         server, node = owned_server(db, server_id, ctx.membership.organization_id)
     return with_node(server, node)
+
+
+@router.get("/{server_id}/storage-usage")
+async def get_server_storage_usage(
+    server_id: str,
+    ctx: AuthContext = Depends(current_auth_context),
+) -> StorageUsage:
+    with get_session() as db:
+        server, node = owned_server(db, server_id, ctx.membership.organization_id)
+        if server.status != "running":
+            raise HTTPException(409, "storage usage requires a running server")
+    response = await node_transport.request(node, "GET", f"/sandboxes/{server.vm_id}/storage-usage")
+    return StorageUsage.model_validate(response.json())
 
 
 @router.post("/{server_id}/stop")

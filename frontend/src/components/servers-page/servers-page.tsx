@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Play, RotateCcw, Square, Trash2 } from "lucide-react";
 import { useState } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { deleteServer, listServers, retryServer, startServer, stopServer } from "../../api";
 import type { Server, ServerConfig } from "../../api";
 import { OPENCLAW_CHANNELS, OS_RELEASES, SOFTWARE, XCODE_LOGO } from "../../image-catalog";
@@ -236,7 +236,7 @@ export function ServersPage() {
                 const status = serverStatus(server.status);
                 return (
                   <div className={`${listClasses.row} ${styles.cols}`} key={server.id}>
-                    <div className={listClasses.name}>{server.name}</div>
+                    <div className={listClasses.name}><Link className={styles.resourceLink} to={`/servers/${server.id}`}>{server.name}</Link></div>
                     <div className={listClasses.cell}>{server.node_name}</div>
                     <div className={listClasses.cell}>{macosLabel(server.config)}</div>
                     <SoftwareCell config={server.config} />

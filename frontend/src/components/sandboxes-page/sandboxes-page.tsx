@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pause, Play, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import { deleteSandbox, listAllNodes, listSandboxes, pauseSandbox, resumeSandbox } from "../../api";
 import type { Sandbox } from "../../api";
 import {
@@ -290,8 +291,14 @@ export function SandboxesPage() {
                 pageItems.map((sandbox) => {
                   const state = displayStatus(sandbox);
                   return (
-                    <div className={listClasses.row} style={{ gridTemplateColumns: COLUMNS }} key={sandbox.id}>
-                      <div className={`${listClasses.name} ${listClasses.mono}`}>{sandbox.id}</div>
+                    <div
+                      className={`${listClasses.row} ${styles.linkRow}`}
+                      style={{ gridTemplateColumns: COLUMNS }}
+                      key={sandbox.id}
+                    >
+                      <div className={`${listClasses.name} ${listClasses.mono}`}>
+                        <Link className={styles.resourceLink} to={`/sandboxes/${sandbox.id}`}>{sandbox.id}</Link>
+                      </div>
                       <div className={listClasses.cell}>{sandbox.node_name}</div>
                       <div className={listClasses.cell}>{allocation(sandbox)}</div>
                       <div className={listClasses.statusCell}>

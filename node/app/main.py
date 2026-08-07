@@ -84,6 +84,26 @@ async def list_sandboxes() -> list[dict]:
     ]
 
 
+@app.get("/sandboxes/{sandbox_id}/storage-usage")
+async def sandbox_storage_usage(sandbox_id: str) -> dict:
+    async with vm_lock(sandbox_id):
+        if await lume.find(sandbox_id) is None:
+            raise HTTPException(404, "sandbox not found")
+        command = (
+            "total=$(diskutil info -plist / | plutil -extract APFSContainerSize raw -); "
+            "free=$(diskutil info -plist / | plutil -extract APFSContainerFree raw -); "
+            "printf '%s\\n' $((total - free))"
+        )
+        output = await lume.execute(sandbox_id, command)
+        try:
+            used_bytes = int(output.strip())
+        except ValueError as error:
+            raise NodeOperationError("VM returned invalid storage usage") from error
+        if used_bytes < 0:
+            raise NodeOperationError("VM returned negative storage usage")
+        return {"used_bytes": used_bytes}
+
+
 class ExecuteInput(BaseModel):
     command: str
 

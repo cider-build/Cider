@@ -5,7 +5,7 @@
 }
 
 .sidebar {
-  border-right: 1px solid #e5e5e5;
+  border-right: 1px solid var(--line-strong);
   display: flex;
   flex-direction: column;
   height: 100vh;
@@ -16,6 +16,7 @@
 
 .logo {
   color: var(--ink);
+  font-family: "Montserrat", ui-sans-serif, system-ui, sans-serif;
   font-size: 22px;
   font-weight: 800;
   letter-spacing: -0.4px;

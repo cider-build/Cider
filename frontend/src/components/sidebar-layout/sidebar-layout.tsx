@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
+import { NodeIcon } from "../node-icon";
 import styles from "./sidebar-layout.module.css";
 
 const ICONS = {
@@ -18,12 +19,7 @@ const ICONS = {
       <path d="M7 16.5h.01" />
     </svg>
   ),
-  nodes: (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="5" width="18" height="12" rx="2" />
-      <path d="M2 19.5h20" />
-    </svg>
-  ),
+  nodes: <NodeIcon />,
   snapshots: (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M12 3l9 5-9 5-9-5 9-5z" />
