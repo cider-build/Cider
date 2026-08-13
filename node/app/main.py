@@ -15,13 +15,14 @@ from fastapi import (
     File,
     HTTPException,
     Path,
+    Query,
     Request,
     UploadFile,
     WebSocket,
     WebSocketDisconnect,
 )
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 
 from . import config, lume, portable_snapshot
 from .errors import NodeOperationError
@@ -121,19 +122,35 @@ class LaunchConfigIn(BaseModel):
     start: str | None = None
 
 
+class ResourceConfigIn(BaseModel):
+    cpu_count: int = Field(ge=1)
+    memory_bytes: int = Field(ge=1024**3, multiple_of=1024**2)
+
+
 @app.post("/sandboxes", status_code=201)
-async def create_sandbox(archive: UploadFile | None = File(None)) -> dict:
-    sandbox_id = None
+async def create_sandbox(
+    archive: UploadFile | None = File(None),
+    sandbox_id: str | None = None,
+    cpu_count: Annotated[int | None, Query(ge=1)] = None,
+    memory_bytes: Annotated[int | None, Query(ge=1024**3, multiple_of=1024**2)] = None,
+) -> dict:
+    created_id = None
     try:
-        sandbox_id = await lume.create()
+        created_id = await lume.create(sandbox_id, cpu_count, memory_bytes)
         if archive is not None:
             async with upload_path(archive) as path:
-                await lume.upload(sandbox_id, path)
-        return {"id": sandbox_id}
+                await lume.upload(created_id, path)
+        return {"id": created_id}
     except NodeOperationError:
-        if sandbox_id:
-            await lume.delete(sandbox_id)
+        if created_id:
+            await lume.delete(created_id)
         raise
+
+
+@app.post("/sandboxes/{sandbox_id}/configuration", status_code=204)
+async def configure_sandbox(sandbox_id: str, body: ResourceConfigIn) -> None:
+    async with vm_lock(sandbox_id):
+        await lume.configure(sandbox_id, body.cpu_count, body.memory_bytes)
 
 
 @app.post("/sandboxes/{sandbox_id}/stop", status_code=204)
@@ -150,9 +167,9 @@ async def start_sandbox(sandbox_id: str) -> None:
         vm = await lume.find(sandbox_id)
         if vm is None:
             raise HTTPException(404, "sandbox not found")
-        if vm["status"] == "running":
-            return
-        await lume.start(sandbox_id)
+        if vm["status"] != "running":
+            await lume.start(sandbox_id)
+        await lume.wait_until_ready(sandbox_id)
 
 
 @app.post("/sandboxes/{sandbox_id}/upload", status_code=204)
@@ -191,12 +208,17 @@ async def portable_snapshot_sandbox(sandbox_id: str, body: SnapshotInput) -> dic
 
 
 @app.post("/sandboxes/{sandbox_id}/restore", status_code=201)
-async def restore_sandbox(sandbox_id: str, body: RestoreInput) -> dict:
+async def restore_sandbox(
+    sandbox_id: str,
+    body: RestoreInput,
+    cpu_count: Annotated[int | None, Query(ge=1)] = None,
+    memory_bytes: Annotated[int | None, Query(ge=1024**3, multiple_of=1024**2)] = None,
+) -> dict:
     async with vm_lock(sandbox_id):
         if await lume.find(sandbox_id) is not None:
             raise HTTPException(409, "sandbox already exists on destination node")
         try:
-            await portable_snapshot.restore(sandbox_id, body.manifest)
+            await portable_snapshot.restore(sandbox_id, body.manifest, cpu_count, memory_bytes)
         except NodeOperationError as error:
             raise NodeOperationError(f"portable restore failed: {error}") from error
     return {"id": sandbox_id}

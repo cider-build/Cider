@@ -93,7 +93,15 @@ async def restore_snapshot(
         if sandbox.status != "stopped":
             raise HTTPException(409, "sandbox is not stopped")
 
-        node = await vm_lifecycle.find_capacity_node(db, snapshot.org_id, body.node_id)
+        launch_config = snapshot.launch_config or sandbox.launch_config
+        cpu_count, memory_bytes = vm_lifecycle.stored_resources(launch_config, "snapshot")
+        node = await vm_lifecycle.find_capacity_node(
+            db,
+            snapshot.org_id,
+            body.node_id,
+            cpu_count,
+            memory_bytes,
+        )
 
         previous_node_id = sandbox.node_id
         node_id = node.id
@@ -102,7 +110,14 @@ async def restore_snapshot(
         db.add(sandbox)
         db.commit()
         try:
-            await vm_lifecycle.restore_vm(node, sandbox.id, snapshot.org_id, snapshot.id)
+            await vm_lifecycle.restore_vm(
+                node,
+                sandbox.id,
+                snapshot.org_id,
+                snapshot.id,
+                cpu_count,
+                memory_bytes,
+            )
         except BaseException:
             sandbox.node_id = previous_node_id
             sandbox.status = "stopped"
@@ -112,7 +127,6 @@ async def restore_snapshot(
 
         sandbox.status = "active"
         sandbox.created_at = utc_now()
-        launch_config = snapshot.launch_config or sandbox.launch_config
         try:
             db.add(sandbox)
             db.commit()

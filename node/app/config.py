@@ -12,6 +12,8 @@ VM_STORAGE = os.environ.get("CIDER_VM_STORAGE", os.path.expanduser("~/.cider/vms
 SANDBOX_PREFIX = os.environ.get("CIDER_SANDBOX_PREFIX", "cider-")
 SNAPSHOT_PREFIX = f"{SANDBOX_PREFIX}snap-"
 START_TIMEOUT_SECONDS = int(os.environ.get("START_TIMEOUT_SECONDS", "120"))
+VM_POLL_SECONDS = float(os.environ.get("CIDER_VM_POLL_SECONDS", "0.1"))
+SSH_CONNECT_TIMEOUT_SECONDS = int(os.environ.get("CIDER_SSH_CONNECT_TIMEOUT_SECONDS", "2"))
 SSH_USER = os.environ.get("CIDER_SSH_USER", "lume")
 SSH_KEY = os.environ.get("CIDER_SSH_KEY", os.path.expanduser("~/.cider/ssh_key"))
 SSH_PASSWORD = os.environ.get("CIDER_SSH_PASSWORD")
@@ -25,6 +27,12 @@ BASE_IMAGE_ID_PATH = os.environ.get(
     os.path.expanduser("~/.cider/cider-base.image-id"),
 )
 SNAPSHOT_CHUNK_SIZE = int(os.environ.get("CIDER_SNAPSHOT_CHUNK_SIZE", str(4 * 1024 * 1024)))
+VM_TRASH = os.environ.get("CIDER_VM_TRASH", os.path.join(os.path.dirname(VM_STORAGE), "trash"))
+
+if VM_POLL_SECONDS <= 0:
+    raise NodeOperationError("CIDER_VM_POLL_SECONDS must be greater than zero")
+if SSH_CONNECT_TIMEOUT_SECONDS < 1:
+    raise NodeOperationError("CIDER_SSH_CONNECT_TIMEOUT_SECONDS must be at least one")
 
 
 def new_sandbox_id() -> str:

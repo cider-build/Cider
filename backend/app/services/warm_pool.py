@@ -8,7 +8,7 @@ from ..config import settings
 from ..db import get_session
 from ..models import Node, Sandbox, Server
 from ..models.base import utc_now
-from . import node_transport
+from . import node_transport, vm_lifecycle
 from .node_gateway import node_gateway
 
 warming = defaultdict(int)
@@ -53,17 +53,25 @@ def warm_sandbox(db, node_id: str):
 
 def node_has_vm_capacity(db, node):
     sandboxes = live_sandboxes(db, node.id)
-    local = sum(sandbox.status != "stopped" for sandbox in sandboxes)
+    local = sum(sandbox.status not in ("stopped", "warm") for sandbox in sandboxes)
     return local + running_server_count(db, node.id) + warming[node.id] < node.vm_count
 
 
-def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None, min_storage: int | None = None):
+def reserve_archive_sandbox(
+    db,
+    org_id: str,
+    node_id: str | None = None,
+    min_storage: int | None = None,
+    cpu_count: int | None = None,
+    memory_bytes: int | None = None,
+):
     nodes = require_nodes(db, org_id, node_id)
     if min_storage is not None:
         nodes = [node for node in nodes if node.sandbox_storage_bytes is not None and node.sandbox_storage_bytes >= min_storage]
         if not nodes:
             gigabytes = min_storage / 1024**3
             raise HTTPException(422, f"no connected node offers {gigabytes:.0f} GB of storage per sandbox")
+    nodes = nodes_with_resources(nodes, cpu_count, memory_bytes, node_id)
     for node in nodes:
         warm = warm_sandbox(db, node.id)
         if warm is not None:
@@ -80,10 +88,42 @@ def reserve_archive_sandbox(db, org_id: str, node_id: str | None = None, min_sto
     raise HTTPException(429, "all nodes are at their configured VM capacity")
 
 
-def claim_vm_for_server(org_id: str, node_id: str | None = None):
+def nodes_with_resources(
+    nodes: list[Node],
+    cpu_count: int | None,
+    memory_bytes: int | None,
+    node_id: str | None,
+) -> list[Node]:
+    supported = []
+    errors = []
+    for node in nodes:
+        try:
+            vm_lifecycle.resolve_resources(node, cpu_count, memory_bytes)
+        except HTTPException as error:
+            errors.append(error.detail)
+        else:
+            supported.append(node)
+    if supported:
+        return supported
+    if node_id is not None and errors:
+        raise HTTPException(422, errors[0])
+    raise HTTPException(422, "no connected node supports the requested VM resources")
+
+
+def claim_vm_for_server(
+    org_id: str,
+    node_id: str | None = None,
+    cpu_count: int | None = None,
+    memory_bytes: int | None = None,
+):
     """Claim a warm VM, or reserve capacity for a new VM."""
     with get_session() as db:
-        nodes = require_nodes(db, org_id, node_id)
+        nodes = nodes_with_resources(
+            require_nodes(db, org_id, node_id),
+            cpu_count,
+            memory_bytes,
+            node_id,
+        )
         for node in nodes:
             warm = warm_sandbox(db, node.id)
             if warm is not None:
@@ -146,9 +186,17 @@ async def warm_one(node_id: str):
             node = db.get(Node, node_id)
             if node is None:
                 raise RuntimeError(f"node not found while warming: {node_id}")
-        response = await node_transport.request(node, "POST", "/sandboxes")
+        response = await vm_lifecycle.create_vm(node)
+        sandbox_id = response.json()["id"]
+        await node_transport.request(
+            node,
+            "POST",
+            f"/sandboxes/{sandbox_id}/execute",
+            json={"command": "/bin/sync"},
+        )
+        await node_transport.request(node, "POST", f"/sandboxes/{sandbox_id}/stop")
         with get_session() as db:
-            db.add(Sandbox(id=response.json()["id"], node_id=node_id, status="warm"))
+            db.add(Sandbox(id=sandbox_id, node_id=node_id, status="warm"))
             db.commit()
     finally:
         warming[node_id] = max(0, warming[node_id] - 1)
@@ -158,17 +206,42 @@ async def create_sandbox_on_available_node(
     org_id: str,
     status: str,
     node_id: str | None = None,
+    cpu_count: int | None = None,
+    memory_bytes: int | None = None,
 ):
     for _ in range(settings.sandbox_create_wait_seconds):
         with get_session() as db:
-            nodes = require_nodes(db, org_id, node_id)
+            nodes = nodes_with_resources(
+                require_nodes(db, org_id, node_id),
+                cpu_count,
+                memory_bytes,
+                node_id,
+            )
 
             for node in nodes:
                 warm = warm_sandbox(db, node.id)
                 if warm is not None:
-                    warm.status = status
+                    warm.status = "provisioning"
                     warm.org_id = org_id
                     warm.created_at = utc_now()
+                    db.add(warm)
+                    db.commit()
+                    db.refresh(warm)
+                    try:
+                        await vm_lifecycle.configure_vm(
+                            node,
+                            warm.id,
+                            cpu_count,
+                            memory_bytes,
+                        )
+                        await node_transport.request(node, "POST", f"/sandboxes/{warm.id}/start")
+                    except BaseException:
+                        warm.status = "warm"
+                        warm.org_id = None
+                        db.add(warm)
+                        db.commit()
+                        raise
+                    warm.status = status
                     db.add(warm)
                     db.commit()
                     db.refresh(warm)
@@ -177,7 +250,7 @@ async def create_sandbox_on_available_node(
 
             for node in nodes:
                 if node_has_vm_capacity(db, node):
-                    response = await node_transport.request(node, "POST", "/sandboxes")
+                    response = await vm_lifecycle.create_vm(node, cpu_count, memory_bytes)
                     sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=org_id, status=status)
                     db.add(sandbox)
                     db.commit()

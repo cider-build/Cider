@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints
 from sqlmodel import select
 
 from ..auth import AuthContext, current_auth_context
@@ -12,6 +12,7 @@ from ..db import get_session
 from ..models import Node, Server
 from ..models.base import utc_now
 from ..services import node_transport, storage_usage, vm_lifecycle, warm_pool
+from ..services.node_gateway import node_gateway
 from ..snapshot_store import discard_manifest, manifest_path
 
 router = APIRouter(prefix="/servers")
@@ -25,6 +26,8 @@ def shell_quote(value: str) -> str:
 
 class ServerConfig(BaseModel):
     image: str = "macos-26"
+    cpu_count: int | None = Field(default=None, ge=1)
+    memory_bytes: int | None = Field(default=None, ge=1024**3, multiple_of=1024**2)
     software: list[str] = []
     channels: list[str] = []
     env: dict[str, str] = {}
@@ -225,9 +228,21 @@ async def create_server(body: CreateServerInput, ctx: AuthContext = Depends(curr
         if duplicate is not None:
             raise HTTPException(409, f"a server named {body.name!r} already exists")
 
-    node, vm_id = warm_pool.claim_vm_for_server(org_id, body.node_id)
-    commands, start = provision_commands(config)
-    needs_provision = bool(commands or start)
+    node, vm_id = warm_pool.claim_vm_for_server(
+        org_id,
+        body.node_id,
+        config.cpu_count,
+        config.memory_bytes,
+    )
+    cpu_count, memory_bytes = vm_lifecycle.resolve_resources(
+        node,
+        config.cpu_count,
+        config.memory_bytes,
+    )
+    config = config.model_copy(update={
+        "cpu_count": cpu_count,
+        "memory_bytes": memory_bytes,
+    })
 
     with get_session() as db:
         server = Server(
@@ -236,24 +251,12 @@ async def create_server(body: CreateServerInput, ctx: AuthContext = Depends(curr
             name=body.name,
             vm_id=vm_id or "",
             image=config.model_dump(),
-            status="provisioning" if (vm_id is None or needs_provision) else "running",
+            status="provisioning",
         )
         db.add(server)
         db.commit()
         db.refresh(server)
-    if server.status == "provisioning":
-        asyncio.create_task(provision_server(server.id, node.id))
-    else:
-        server.storage_used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
-        with get_session() as db:
-            stored = db.get(Server, server.id)
-            if stored is None:
-                raise HTTPException(404, "server not found after creation")
-            stored.storage_used_bytes = server.storage_used_bytes
-            db.add(stored)
-            db.commit()
-            db.refresh(stored)
-            server = stored
+    asyncio.create_task(provision_server(server.id, node.id))
     asyncio.create_task(warm_pool.ensure_node_has_warm_sandboxes(node.id))
     return with_node(server, node)
 
@@ -266,10 +269,15 @@ async def provision_server(server_id: str, node_id: str) -> None:
         return
     vm_id = server.vm_id
     reserved = not vm_id
+    config = server_config(server)
     try:
         if not vm_id:
             try:
-                response = await node_transport.request(node, "POST", "/sandboxes")
+                response = await vm_lifecycle.create_vm(
+                    node,
+                    config.cpu_count,
+                    config.memory_bytes,
+                )
             finally:
                 # Release the capacity reservation after the create attempt.
                 warm_pool.warming[node_id] = max(0, warm_pool.warming[node_id] - 1)
@@ -283,7 +291,15 @@ async def provision_server(server_id: str, node_id: str) -> None:
                 stored.vm_id = vm_id
                 db.add(stored)
                 db.commit()
-        commands, start = provision_commands(server_config(server))
+        else:
+            await vm_lifecycle.configure_vm(
+                node,
+                vm_id,
+                config.cpu_count,
+                config.memory_bytes,
+            )
+            await vm_lifecycle.start_vm(node, vm_id)
+        commands, start = provision_commands(config)
         await vm_lifecycle.run_launch(node, vm_id, setup=commands, start=start)
         used_bytes = await storage_usage.measure_vm_storage(node, vm_id)
     except Exception as error:
@@ -343,7 +359,7 @@ async def stop_server(server_id: str, ctx: AuthContext = Depends(current_auth_co
             return with_node(server, node)
         if server.status != "running":
             raise HTTPException(409, f"server is {server.status}; it cannot be stopped")
-        # Prevent reconciliation from treating the VM removal as a failure.
+        # Prevent reconciliation from changing the server during stop.
         server.status = "stopping"
         db.add(server)
         db.commit()
@@ -382,26 +398,71 @@ async def start_server(server_id: str, ctx: AuthContext = Depends(current_auth_c
             return with_node(server, node)
         if server.status != "stopped":
             raise HTTPException(409, f"server is {server.status}; it cannot be started")
-        node = await vm_lifecycle.find_capacity_node(db, server.org_id)
+        local_state = None
+        if node_gateway.is_connected(node.id):
+            local_state = await vm_lifecycle.vm_state(node, server.vm_id)
+
+        restore_export = local_state is None
+        if local_state == "running":
+            server.status = "running"
+            server.status_detail = None
+            db.add(server)
+            db.commit()
+            db.refresh(server)
+            return with_node(server, node)
+        if local_state not in (None, "stopped"):
+            raise HTTPException(409, f"server VM is {local_state}; it cannot be started")
+        if restore_export:
+            if not manifest_path(server.org_id, storage_key(server)).exists():
+                raise HTTPException(409, "server VM is unavailable and has no saved export")
+            config = server_config(server)
+            node = await vm_lifecycle.find_capacity_node(
+                db,
+                server.org_id,
+                cpu_count=config.cpu_count,
+                memory_bytes=config.memory_bytes,
+            )
 
         previous_node_id = server.node_id
         server.node_id = node.id
         server.status = "provisioning"
         db.add(server)
         db.commit()
-    asyncio.create_task(_start_task(server_id, node.id, previous_node_id))
+    asyncio.create_task(_start_task(server_id, node.id, previous_node_id, restore_export))
     return with_node(server, node)
 
 
-async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> None:
+async def _start_task(
+    server_id: str,
+    node_id: str,
+    previous_node_id: str,
+    restore_export: bool,
+) -> None:
     with get_session() as db:
         node = db.get(Node, node_id)
         server = db.get(Server, server_id)
     if node is None or server is None:
         return
+    config = server_config(server)
     try:
-        await vm_lifecycle.restore_vm(node, server.vm_id, server.org_id, storage_key(server))
-        commands, start = relaunch_commands(server_config(server))
+        if restore_export:
+            await vm_lifecycle.restore_vm(
+                node,
+                server.vm_id,
+                server.org_id,
+                storage_key(server),
+                config.cpu_count,
+                config.memory_bytes,
+            )
+        else:
+            await vm_lifecycle.configure_vm(
+                node,
+                server.vm_id,
+                config.cpu_count,
+                config.memory_bytes,
+            )
+            await vm_lifecycle.start_vm(node, server.vm_id)
+        commands, start = relaunch_commands(config)
         await vm_lifecycle.run_launch(node, server.vm_id, setup=commands, start=start)
         used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
     except Exception as error:
@@ -460,6 +521,10 @@ async def delete_server(server_id: str, ctx: AuthContext = Depends(current_auth_
         vm_id = server.vm_id
     if was_stopped:
         discard_manifest(server.org_id, storage_key(server))
+        if vm_id and node_gateway.is_connected(node.id):
+            local_state = await vm_lifecycle.vm_state(node, vm_id)
+            if local_state is not None:
+                await _discard_vm(node, vm_id)
     elif vm_id:
         await _discard_vm(node, vm_id)
     await warm_pool.ensure_node_has_warm_sandboxes(node.id)

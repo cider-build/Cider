@@ -160,7 +160,16 @@ async function nodeMetadata() {
 }
 
 async function enrollment(config, name) {
-  const nodeName = name || readNodeState()?.name || hostname();
+  const existing = readNodeState();
+  if (!name && existing) {
+    for (const key of ["id", "name", "token"]) {
+      if (typeof existing[key] !== "string" || !existing[key]) {
+        throw new Error(`saved node state has an invalid ${key}`);
+      }
+    }
+    return existing;
+  }
+  const nodeName = name || hostname();
   let enrolled;
   try {
     enrolled = await makeClient(config).enrollNode(nodeName);
