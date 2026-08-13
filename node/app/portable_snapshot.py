@@ -172,8 +172,13 @@ def _restore_files(sandbox_id: str, manifest: dict) -> None:
         os.fsync(disk.fileno())
 
 
-async def restore(sandbox_id: str, manifest: dict) -> None:
-    await lume.clone(config.BASE_VM, sandbox_id)
+async def restore(
+    sandbox_id: str,
+    manifest: dict,
+    cpu_count: int | None = None,
+    memory_bytes: int | None = None,
+) -> None:
+    await lume.clone(config.BASE_VM, sandbox_id, cpu_count, memory_bytes)
     try:
         await asyncio.to_thread(_restore_files, sandbox_id, manifest)
         await lume.start(sandbox_id)

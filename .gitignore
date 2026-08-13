@@ -29,6 +29,12 @@ __pycache__/
 .claude/
 
 scripts/
+!scripts/
+scripts/*
+!scripts/benchmark-lifecycle
+!scripts/benchmarks/
+scripts/benchmarks/*
+!scripts/benchmarks/lifecycle.py
 # os
 .DS_Store
 docs/

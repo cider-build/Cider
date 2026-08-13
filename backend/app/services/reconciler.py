@@ -13,6 +13,7 @@ from .node_gateway import node_gateway
 
 # Ignore rows while asynchronous provisioning or restoration can remain active.
 GRACE = timedelta(seconds=180)
+BENCHMARK_PREFIX = "cider-bench-"
 
 
 async def reconcile_all_nodes() -> None:
@@ -76,7 +77,11 @@ async def reconcile_node(node_id: str) -> None:
     # Delete VMs left by failures between VM creation and row commit.
     claimed = {sandbox.id for sandbox in sandboxes if sandbox.deleted_at is None}
     claimed |= {server.vm_id for server in servers if server.vm_id}
-    orphans = [vm_id for vm_id in vm_status if vm_id not in claimed]
+    orphans = [
+        vm_id
+        for vm_id in vm_status
+        if vm_id not in claimed and not vm_id.startswith(BENCHMARK_PREFIX)
+    ]
     for vm_id in orphans:
         try:
             await node_transport.request(node, "DELETE", f"/sandboxes/{vm_id}")
@@ -129,3 +134,5 @@ async def reconcile_node(node_id: str) -> None:
                 sandbox.storage_used_bytes = used_bytes
                 db.add(sandbox)
                 db.commit()
+
+    await warm_pool.reconcile_node_warm_pool(node_id)

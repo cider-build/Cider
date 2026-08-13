@@ -106,7 +106,11 @@ def min_storage_bytes(config: dict | None) -> int | None:
     if not config:
         return None
     resources = config.get("resources")
-    if not isinstance(resources, dict) or "min_storage" not in resources:
+    if resources is None:
+        return None
+    if not isinstance(resources, dict):
+        raise ValueError("resources must be a mapping")
+    if "min_storage" not in resources:
         return None
     value = resources["min_storage"]
     if isinstance(value, int) and value > 0:
@@ -116,6 +120,10 @@ def min_storage_bytes(config: dict | None) -> int | None:
         if match:
             return int(float(match.group(1)) * STORAGE_UNITS[match.group(2).lower()])
     raise ValueError('resources.min_storage must be bytes or a size like "60GB"')
+
+
+def sandbox_resources(sandbox: Sandbox) -> tuple[int | None, int | None]:
+    return vm_lifecycle.stored_resources(sandbox.launch_config, "sandbox")
 
 
 @router.get("")
@@ -165,6 +173,8 @@ async def get_sandbox_storage_usage(
 async def create_sandbox(
     archive: UploadFile | None = File(None),
     node_id: str | None = Form(None),
+    cpu_count: int | None = Form(None, ge=1),
+    memory_bytes: int | None = Form(None, ge=1024**3, multiple_of=1024**2),
     ctx: AuthContext = Depends(current_auth_context),
 ) -> Sandbox:
     config = None
@@ -177,6 +187,8 @@ async def create_sandbox(
                     ctx.membership.organization_id,
                     status,
                     node_id,
+                    cpu_count,
+                    memory_bytes,
                 )
             else:
                 archive_bytes = await archive.read()
@@ -186,12 +198,14 @@ async def create_sandbox(
                     ctx.membership.organization_id,
                     node_id,
                     min_storage=min_storage_bytes(config),
+                    cpu_count=cpu_count,
+                    memory_bytes=memory_bytes,
                 )
                 if sandbox is None:
-                    response = await node_transport.request(
+                    response = await vm_lifecycle.create_vm(
                         node,
-                        "POST",
-                        "/sandboxes",
+                        cpu_count,
+                        memory_bytes,
                         files={"archive": (archive.filename, archive_bytes, archive.content_type)},
                     )
                     sandbox = Sandbox(id=response.json()["id"], node_id=node.id, org_id=ctx.membership.organization_id, launch_config=config, status=status)
@@ -200,6 +214,17 @@ async def create_sandbox(
                     db.refresh(sandbox)
                 else:
                     try:
+                        await vm_lifecycle.configure_vm(
+                            node,
+                            sandbox.id,
+                            cpu_count,
+                            memory_bytes,
+                        )
+                        await node_transport.request(
+                            node,
+                            "POST",
+                            f"/sandboxes/{sandbox.id}/start",
+                        )
                         await node_transport.request(
                             node,
                             "POST",
@@ -225,6 +250,25 @@ async def create_sandbox(
                     db.commit()
                     db.refresh(sandbox)
                     await warm_pool.ensure_node_has_warm_sandboxes(node.id)
+            resolved_cpu, resolved_memory = vm_lifecycle.resolve_resources(
+                node,
+                cpu_count,
+                memory_bytes,
+            )
+            config = dict(config or {})
+            stored_resources = config.get("resources")
+            if stored_resources is not None and not isinstance(stored_resources, dict):
+                raise ValueError("resources must be a mapping")
+            resources = dict(stored_resources or {})
+            resources.update({
+                "cpu_count": resolved_cpu,
+                "memory_bytes": resolved_memory,
+            })
+            config["resources"] = resources
+            sandbox.launch_config = config
+            db.add(sandbox)
+            db.commit()
+            db.refresh(sandbox)
         except ValueError as e:
             raise HTTPException(422, str(e))
 
@@ -370,7 +414,14 @@ async def resume_sandbox(
         if sandbox.status != "paused":
             raise HTTPException(409, f"sandbox is {sandbox.status}; only a paused sandbox can be resumed")
 
-        node = await vm_lifecycle.find_capacity_node(db, sandbox.org_id, requested_node_id)
+        cpu_count, memory_bytes = sandbox_resources(sandbox)
+        node = await vm_lifecycle.find_capacity_node(
+            db,
+            sandbox.org_id,
+            requested_node_id,
+            cpu_count,
+            memory_bytes,
+        )
 
         previous_node_id = sandbox.node_id
         node_id = node.id
@@ -379,7 +430,14 @@ async def resume_sandbox(
         db.add(sandbox)
         db.commit()
         try:
-            await vm_lifecycle.restore_vm(node, sandbox.id, sandbox.org_id, pause_key(sandbox.id))
+            await vm_lifecycle.restore_vm(
+                node,
+                sandbox.id,
+                sandbox.org_id,
+                pause_key(sandbox.id),
+                cpu_count,
+                memory_bytes,
+            )
         except BaseException:
             sandbox.node_id = previous_node_id
             sandbox.status = "paused"
