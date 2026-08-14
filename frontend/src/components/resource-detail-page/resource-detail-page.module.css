@@ -104,19 +104,29 @@
   padding: var(--detail-rail-top) var(--detail-rail-x) 80px;
 }
 
-.rail button {
+.rail a {
   background: transparent;
   border: 0;
-  border-left: 3px solid var(--orange);
+  border-left: 3px solid transparent;
   border-radius: 0 7px 7px 0;
-  color: var(--ink);
-  cursor: default;
+  color: var(--muted);
+  display: block;
   font-family: var(--detail-font-family);
   font-size: var(--detail-navigation-size);
   font-weight: var(--detail-navigation-weight);
   padding: 10px 12px;
   text-align: left;
+  text-decoration: none;
   width: 100%;
+}
+
+.rail a[aria-current="page"] {
+  border-left-color: var(--orange);
+  color: var(--ink);
+}
+
+.rail a:hover {
+  color: var(--ink);
 }
 
 .content {

@@ -23,7 +23,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StringConstraints
 
-from . import config, lume, portable_snapshot
+from . import config, lume, metrics, portable_snapshot
 from .errors import NodeOperationError
 
 app = FastAPI(title="Cider Node")
@@ -102,6 +102,17 @@ async def sandbox_storage_usage(sandbox_id: str) -> dict:
         if used_bytes < 0:
             raise NodeOperationError("VM returned negative storage usage")
         return {"used_bytes": used_bytes}
+
+
+@app.get("/sandboxes/{sandbox_id}/metrics", response_model=metrics.VmMetrics)
+async def sandbox_metrics(sandbox_id: str) -> metrics.VmMetrics:
+    async with vm_lock(sandbox_id):
+        vm = await lume.find(sandbox_id)
+        if vm is None:
+            raise HTTPException(404, "sandbox not found")
+        if vm["status"] != "running":
+            raise HTTPException(409, "sandbox is not running")
+        return await metrics.collect(sandbox_id)
 
 
 class ExecuteInput(BaseModel):

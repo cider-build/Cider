@@ -5,7 +5,12 @@ import { AuthForm } from "./components/auth-form/auth-form";
 import { CreateServerPage } from "./components/create-server-page/create-server-page";
 import { NodePage } from "./components/node-page/node-page";
 import { NodesPage } from "./components/nodes-page/nodes-page";
-import { SandboxDetailPage, ServerDetailPage } from "./components/resource-detail-page/resource-detail-page";
+import {
+  SandboxDetailPage,
+  SandboxMetricsPage,
+  ServerDetailPage,
+  ServerMetricsPage,
+} from "./components/resource-detail-page/resource-detail-page";
 import { SandboxesPage } from "./components/sandboxes-page/sandboxes-page";
 import { ServersPage } from "./components/servers-page/servers-page";
 import { SidebarLayout } from "./components/sidebar-layout/sidebar-layout";
@@ -34,9 +39,11 @@ export function App() {
         <Route path="/nodes/:nodeId" element={<NodePage />} />
         <Route path="/sandboxes" element={<SandboxesPage />} />
         <Route path="/sandboxes/:sandboxId" element={<SandboxDetailPage />} />
+        <Route path="/sandboxes/:sandboxId/metrics" element={<SandboxMetricsPage />} />
         <Route path="/servers" element={<ServersPage />} />
         <Route path="/servers/new" element={<CreateServerPage />} />
         <Route path="/servers/:serverId" element={<ServerDetailPage />} />
+        <Route path="/servers/:serverId/metrics" element={<ServerMetricsPage />} />
         <Route path="/snapshots" element={<SnapshotsPage />} />
       </Route>
       <Route

@@ -58,6 +58,17 @@ export type Server = {
   created_at: string;
   deleted_at: string | null;
 };
+export type MetricWindow = "live" | "1h" | "24h";
+export type MetricSample = {
+  cpu_percent: number;
+  memory_percent: number;
+  graphics_memory_bytes: number;
+  collected_at: string;
+};
+export type MetricHistory = {
+  sampling_interval_seconds: number;
+  samples: MetricSample[];
+};
 export type Snapshot = {
   id: string;
   source_sandbox_id: string;
@@ -116,6 +127,8 @@ export const updateNodeConfiguration = (id: string, configuration: NodeConfigura
 
 export const listServers = () => request<Server[]>("/servers?include_deleted=true");
 export const getServer = (id: string) => request<Server>(`/servers/${id}`);
+export const getResourceMetrics = (kind: "server" | "sandbox", id: string, window: MetricWindow) =>
+  request<MetricHistory>(`/${kind}s/${id}/metrics?window=${window}`);
 export const createServer = (body: CreateServerInput) => request<Server>("/servers", { method: "POST", json: body });
 export const stopServer = (id: string) => request<Server>(`/servers/${id}/stop`, { method: "POST" });
 export const startServer = (id: string) => request<Server>(`/servers/${id}/start`, { method: "POST" });
