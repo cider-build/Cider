@@ -307,7 +307,6 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
         elif first.get("bytes") is not None:
             initial_input = first["bytes"]
 
-    print(f"[ssh] session {sandbox_id}: term={term} size={cols}x{rows} init={'control' if not initial_input else 'data'}", flush=True)
     master, slave = pty.openpty()
     os.set_blocking(master, False)
     _set_winsize(master, rows, cols)

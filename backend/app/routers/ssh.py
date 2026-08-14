@@ -135,24 +135,18 @@ def terminal_target(
     with get_session() as db:
         if kind == "sandbox":
             resource = db.get(Sandbox, resource_id)
-            available = (
-                resource is not None
-                and resource.org_id == org_id
-                and resource.deleted_at is None
-                and resource.status == "active"
-            )
-            vm_id = resource.id if resource is not None else ""
+            running_status = "active"
         else:
             resource = db.get(Server, resource_id)
-            available = (
-                resource is not None
-                and resource.org_id == org_id
-                and resource.deleted_at is None
-                and resource.status == "running"
-            )
-            vm_id = resource.vm_id if resource is not None else ""
-        if not available or resource is None:
+            running_status = "running"
+        if (
+            resource is None
+            or resource.org_id != org_id
+            or resource.deleted_at is not None
+            or resource.status != running_status
+        ):
             raise HTTPException(404, "running resource not found")
+        vm_id = resource.vm_id if isinstance(resource, Server) else resource.id
         node = db.get(Node, resource.node_id)
         if node is None or not node_gateway.is_connected(node.id):
             raise HTTPException(404, "running resource not found")

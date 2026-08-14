@@ -86,7 +86,7 @@ async def collect_all() -> None:
     targets = [
         MetricTarget(sandbox.org_id, node, "sandbox", sandbox.id, sandbox.id)
         for sandbox, node in sandbox_rows
-        if sandbox.org_id is not None and node_gateway.is_connected(node.id)
+        if node_gateway.is_connected(node.id)
     ] + [
         MetricTarget(server.org_id, node, "server", server.id, server.vm_id)
         for server, node in server_rows

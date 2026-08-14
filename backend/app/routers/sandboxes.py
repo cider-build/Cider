@@ -140,27 +140,6 @@ async def get_sandbox(sandbox_id: str, ctx: AuthContext = Depends(current_auth_c
     return with_node(sandbox, node)
 
 
-@router.get("/{sandbox_id}/storage-usage")
-async def get_sandbox_storage_usage(
-    sandbox_id: str,
-    ctx: AuthContext = Depends(current_auth_context),
-) -> storage_usage.StorageUsage:
-    with get_session() as db:
-        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
-        node = sandbox_node(db, sandbox)
-        if sandbox.status != "active":
-            if sandbox.storage_used_bytes is None:
-                raise HTTPException(409, "storage usage was not recorded before this sandbox stopped")
-            return storage_usage.StorageUsage(used_bytes=sandbox.storage_used_bytes)
-    used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
-    with get_session() as db:
-        sandbox = owned_sandbox(db, sandbox_id, ctx.membership.organization_id)
-        sandbox.storage_used_bytes = used_bytes
-        db.add(sandbox)
-        db.commit()
-    return storage_usage.StorageUsage(used_bytes=used_bytes)
-
-
 @router.post("", status_code=201)
 async def create_sandbox(
     archive: UploadFile | None = File(None),
@@ -231,16 +210,8 @@ async def create_sandbox(
     if config is not None:
         await node_transport.request(node, "POST", f"/sandboxes/{sandbox.id}/launch-config", json=config)
 
-    used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
-    with get_session() as db:
-        sandbox = db.get(Sandbox, sandbox.id)
-        if sandbox is None:
-            raise HTTPException(404, "sandbox not found after creation")
-        sandbox.storage_used_bytes = used_bytes
-        db.add(sandbox)
-        db.commit()
-        db.refresh(sandbox)
-
+    sandbox.storage_used_bytes = await storage_usage.measure_vm_storage(node, sandbox.id)
+    storage_usage.record(Sandbox, sandbox.id, sandbox.storage_used_bytes)
     return sandbox
 
 

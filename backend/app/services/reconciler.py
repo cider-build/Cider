@@ -1,4 +1,4 @@
-"""Reconcile database state with each connected node."""
+"""Reconcile database workload state with each connected node."""
 
 import logging
 from datetime import timedelta
@@ -14,6 +14,7 @@ from .node_gateway import node_gateway
 
 logger = logging.getLogger(__name__)
 
+# Ignore rows while asynchronous provisioning or restoration can remain active.
 GRACE = timedelta(seconds=180)
 MOVING = {"provisioning", "stopping"}
 
@@ -122,46 +123,28 @@ async def reconcile_node(node_id: str) -> None:
     if refill:
         await warm_pool.ensure_node_has_warm_sandboxes(node_id)
 
+    # Backfill measurements for running rows that have none recorded.
+    targets: list[tuple[type, str, str]] = []
     with get_session() as db:
-        server_targets = [
-            (server.id, server.vm_id)
-            for server in db.exec(
-                select(Server).where(
-                    Server.node_id == node_id,
-                    Server.deleted_at.is_(None),
-                    Server.status == "running",
-                    Server.storage_used_bytes.is_(None),
+        for model, status, vm_attr in ((Server, "running", "vm_id"), (Sandbox, "active", "id")):
+            rows = db.exec(
+                select(model).where(
+                    model.node_id == node_id,
+                    model.deleted_at.is_(None),
+                    model.status == status,
+                    model.storage_used_bytes.is_(None),
                 )
             ).all()
-            if vm_status.get(server.vm_id) == "running"
-        ]
-        sandbox_targets = [
-            sandbox.id
-            for sandbox in db.exec(
-                select(Sandbox).where(
-                    Sandbox.node_id == node_id,
-                    Sandbox.deleted_at.is_(None),
-                    Sandbox.status == "active",
-                    Sandbox.storage_used_bytes.is_(None),
-                )
-            ).all()
-            if vm_status.get(sandbox.id) == "running"
-        ]
+            targets += [
+                (model, row.id, getattr(row, vm_attr))
+                for row in rows
+                if vm_status.get(getattr(row, vm_attr)) == "running"
+            ]
 
-    for server_id, vm_id in server_targets:
-        used_bytes = await storage_usage.measure_vm_storage(node, vm_id)
-        with get_session() as db:
-            server = db.get(Server, server_id)
-            if server is not None:
-                server.storage_used_bytes = used_bytes
-                db.add(server)
-                db.commit()
-
-    for sandbox_id in sandbox_targets:
-        used_bytes = await storage_usage.measure_vm_storage(node, sandbox_id)
-        with get_session() as db:
-            sandbox = db.get(Sandbox, sandbox_id)
-            if sandbox is not None:
-                sandbox.storage_used_bytes = used_bytes
-                db.add(sandbox)
-                db.commit()
+    for model, row_id, vm_id in targets:
+        try:
+            used_bytes = await storage_usage.measure_vm_storage(node, vm_id)
+        except HTTPException:
+            # An unreachable VM must not abort the sweep for the other rows.
+            continue
+        storage_usage.record(model, row_id, used_bytes)

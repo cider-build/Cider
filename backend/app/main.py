@@ -1,4 +1,5 @@
 import asyncio
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +11,8 @@ from .services import reconciler, resource_metrics
 from .services.node_gateway import node_gateway
 
 init_db()
+
+logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Cider Backend")
 
@@ -46,12 +49,13 @@ async def reconcile_loop() -> None:
 
 
 async def metrics_loop() -> None:
-    loop = asyncio.get_running_loop()
     while True:
-        started_at = loop.time()
-        await resource_metrics.collect_all()
-        elapsed = loop.time() - started_at
-        await asyncio.sleep(max(0, resource_metrics.SAMPLE_INTERVAL_SECONDS - elapsed))
+        try:
+            await resource_metrics.collect_all()
+        except Exception:
+            # One failed sweep must not end metric collection.
+            logger.exception("Metric collection sweep failed")
+        await asyncio.sleep(resource_metrics.SAMPLE_INTERVAL_SECONDS)
 
 
 @app.on_event("startup")
