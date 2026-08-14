@@ -12,7 +12,8 @@ from ..auth import AuthContext, current_auth_context
 from ..db import get_session
 from ..models import Node, Server
 from ..models.base import utc_now
-from ..services import node_transport, storage_usage, vm_lifecycle, warm_pool
+from ..services import inflight, node_transport, storage_usage, vm_lifecycle, warm_pool
+from ..services.node_gateway import node_gateway
 from ..snapshot_store import discard_manifest, manifest_path
 
 router = APIRouter(prefix="/servers")
@@ -141,6 +142,7 @@ class ServerWithNode(BaseModel):
     node_id: str
     node_name: str
     status: str
+    status_detail: str | None
     storage_used_bytes: int | None
     config: dict | None
     created_at: datetime
@@ -149,7 +151,7 @@ class ServerWithNode(BaseModel):
 
 def with_node(server: Server, node: Node) -> ServerWithNode:
     return ServerWithNode(
-        **server.model_dump(exclude={"image", "status_detail"}),
+        **server.model_dump(exclude={"image"}),
         config=server.image,
         node_name=node.name,
     )
@@ -179,6 +181,8 @@ def set_server_status(
         server = db.get(Server, server_id)
         if server is None or server.deleted_at is not None:
             return False
+        if detail is not None:
+            logger.warning("Server %s entered %s: %s", server_id, status, detail)
         server.status = status
         server.status_detail = detail
         if node_id is not None:
@@ -247,7 +251,9 @@ async def create_server(body: CreateServerInput, ctx: AuthContext = Depends(curr
         db.commit()
         db.refresh(server)
     if server.status == "provisioning":
-        asyncio.create_task(provision_server(server.id, node.id))
+        asyncio.create_task(
+            inflight.guarded(server.id, provision_server(server.id, node.id))
+        )
     else:
         server.storage_used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
         with get_session() as db:
@@ -353,7 +359,9 @@ async def stop_server(server_id: str, ctx: AuthContext = Depends(current_auth_co
         server.status_detail = None
         db.add(server)
         db.commit()
-    asyncio.create_task(_stop_task(server_id, node.id))
+    asyncio.create_task(
+        inflight.guarded(server_id, _stop_task(server_id, node.id))
+    )
     return with_node(server, node)
 
 
@@ -389,7 +397,25 @@ async def start_server(server_id: str, ctx: AuthContext = Depends(current_auth_c
             return with_node(server, node)
         if server.status != "stopped":
             raise HTTPException(409, f"server is {server.status}; it cannot be started")
-        node = await vm_lifecycle.find_capacity_node(db, server.org_id)
+
+        local_state = None
+        if node_gateway.is_connected(node.id):
+            local_state = await vm_lifecycle.vm_state(node, server.vm_id)
+
+        restore_export = local_state is None
+        if local_state == "running":
+            server.status = "running"
+            server.status_detail = None
+            db.add(server)
+            db.commit()
+            db.refresh(server)
+            return with_node(server, node)
+        if local_state not in (None, "stopped"):
+            raise HTTPException(409, f"server VM is {local_state}; it cannot be started")
+        if restore_export:
+            if not manifest_path(server.org_id, storage_key(server)).exists():
+                raise HTTPException(409, "server VM is unavailable and has no saved export")
+            node = await vm_lifecycle.find_capacity_node(db, server.org_id)
 
         previous_node_id = server.node_id
         server.node_id = node.id
@@ -397,18 +423,31 @@ async def start_server(server_id: str, ctx: AuthContext = Depends(current_auth_c
         server.status_detail = None
         db.add(server)
         db.commit()
-    asyncio.create_task(_start_task(server_id, node.id, previous_node_id))
+    asyncio.create_task(
+        inflight.guarded(
+            server_id,
+            _start_task(server_id, node.id, previous_node_id, restore_export),
+        )
+    )
     return with_node(server, node)
 
 
-async def _start_task(server_id: str, node_id: str, previous_node_id: str) -> None:
+async def _start_task(
+    server_id: str,
+    node_id: str,
+    previous_node_id: str,
+    restore_export: bool,
+) -> None:
     with get_session() as db:
         node = db.get(Node, node_id)
         server = db.get(Server, server_id)
     if node is None or server is None:
         return
     try:
-        await vm_lifecycle.restore_vm(node, server.vm_id, server.org_id, storage_key(server))
+        if restore_export:
+            await vm_lifecycle.restore_vm(node, server.vm_id, server.org_id, storage_key(server))
+        else:
+            await vm_lifecycle.start_vm(node, server.vm_id)
         commands, start = relaunch_commands(server_config(server))
         await vm_lifecycle.run_launch(node, server.vm_id, setup=commands, start=start)
         used_bytes = await storage_usage.measure_vm_storage(node, server.vm_id)
@@ -451,7 +490,9 @@ async def retry_server(server_id: str, ctx: AuthContext = Depends(current_auth_c
         db.add(server)
         db.commit()
         db.refresh(server)
-    asyncio.create_task(provision_server(server.id, node.id))
+    asyncio.create_task(
+        inflight.guarded(server.id, provision_server(server.id, node.id))
+    )
     return with_node(server, node)
 
 
