@@ -22,6 +22,12 @@
   scrollbar-width: thin;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .terminal :global(.xterm-cursor) {
+    animation: none !important;
+  }
+}
+
 .connection {
   align-items: center;
   background: #171717;
@@ -56,7 +62,16 @@
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+  }
 }
 
 .unavailable {

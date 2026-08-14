@@ -3,13 +3,14 @@ import { useState } from "react";
 import type { FormEvent } from "react";
 import { login, signup } from "../../api";
 import type { AuthOut } from "../../api";
+import { Button } from "../ui/ui";
 import styles from "./auth-form.module.css";
 
 type Mode = "login" | "signup";
 
 export function AuthForm() {
   const queryClient = useQueryClient();
-  const [mode, setMode] = useState<Mode>("signup");
+  const [mode, setMode] = useState<Mode>("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [organizationName, setOrganizationName] = useState("");
@@ -27,23 +28,98 @@ export function AuthForm() {
 
   function submit(event: FormEvent) {
     event.preventDefault();
-    if (mode === "signup") signupMutation.mutate({ email, password, organization_name: organizationName });
+    if (mode === "signup")
+      signupMutation.mutate({
+        email,
+        password,
+        organization_name: organizationName,
+      });
     else loginMutation.mutate({ email, password });
   }
 
   return (
-    <form className={styles.form} onSubmit={submit}>
-      <div className={styles.tabs}>
-        <button type="button" onClick={() => setMode("signup")}>Sign up</button>
-        <button type="button" onClick={() => setMode("login")}>Log in</button>
-      </div>
-      <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-      <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
-      {mode === "signup" && (
-        <input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} placeholder="Organization name" />
-      )}
-      <button disabled={pending}>{mode === "signup" ? "Create account" : "Log in"}</button>
-      {error && <p className={styles.error}>{error.message}</p>}
-    </form>
+    <main className={styles.page}>
+      <form className={styles.card} onSubmit={submit}>
+        <span className={styles.logo}>
+          <span className={styles.mark} aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+          <b>
+            cider<span>.</span>
+          </b>
+        </span>
+
+        <nav className={styles.tabs} aria-label="Account">
+          <button
+            type="button"
+            aria-current={mode === "login" ? "page" : undefined}
+            onClick={() => setMode("login")}
+          >
+            Log in
+          </button>
+          <button
+            type="button"
+            aria-current={mode === "signup" ? "page" : undefined}
+            onClick={() => setMode("signup")}
+          >
+            Sign up
+          </button>
+        </nav>
+
+        <label className={styles.field}>
+          <span>Email</span>
+          <input
+            className={styles.input}
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            spellCheck={false}
+            required
+          />
+        </label>
+        <label className={styles.field}>
+          <span>Password</span>
+          <input
+            className={styles.input}
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete={
+              mode === "signup" ? "new-password" : "current-password"
+            }
+            required
+          />
+        </label>
+        {mode === "signup" && (
+          <label className={styles.field}>
+            <span>Organization</span>
+            <input
+              className={styles.input}
+              value={organizationName}
+              onChange={(event) => setOrganizationName(event.target.value)}
+              autoComplete="organization"
+              required
+            />
+          </label>
+        )}
+
+        {error && (
+          <p className={styles.error} role="alert">
+            {error.message}
+          </p>
+        )}
+        <Button kind="primary" block type="submit" disabled={pending}>
+          {pending
+            ? "Working"
+            : mode === "signup"
+              ? "Create account"
+              : "Log in"}
+        </Button>
+      </form>
+    </main>
   );
 }

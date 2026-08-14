@@ -1,21 +1,12 @@
 .metricsPage {
   display: grid;
-  gap: 24px;
+  gap: 18px;
+  padding-top: 16px;
 }
 
 .pageHeader {
-  align-items: flex-end;
-  display: flex;
-  justify-content: space-between;
-}
-
-.eyebrow {
   align-items: center;
-  color: var(--muted);
   display: flex;
-  font-size: var(--detail-label-size);
-  gap: 6px;
-  margin-bottom: 8px;
 }
 
 .pageHeader h2 {
@@ -31,23 +22,27 @@
 
 .windowPicker {
   align-items: center;
-  border: 1px solid var(--line-strong);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
   display: flex;
-  padding: 3px;
+  padding: 2px;
 }
 
 .windowPicker button {
   background: transparent;
   border: 0;
-  border-radius: 5px;
+  border-radius: calc(var(--control-radius) - 1px);
   color: var(--muted);
   cursor: pointer;
   font-family: inherit;
   font-size: var(--detail-label-size);
   font-weight: var(--detail-body-weight);
-  padding: 6px 10px;
-  transition: background-color 150ms var(--ease), color 150ms var(--ease), transform 150ms var(--ease);
+  min-height: 23px;
+  padding: 0 10px;
+  transition:
+    background-color 150ms var(--ease),
+    color 150ms var(--ease),
+    transform 150ms var(--ease);
 }
 
 .windowPicker button[aria-pressed="true"] {
@@ -79,17 +74,8 @@
 .metricHeader,
 .metricName,
 .summary,
-.metricsFooter {
-  align-items: center;
-  display: flex;
-}
-
 .metricHeader,
 .summary,
-.metricsFooter {
-  justify-content: space-between;
-}
-
 .metricName {
   gap: 8px;
 }
@@ -252,11 +238,6 @@
   font-weight: var(--detail-value-weight);
 }
 
-.metricsFooter {
-  color: var(--muted);
-  font-size: var(--detail-label-size);
-}
-
 .state {
   align-items: center;
   border: 1px solid var(--line-strong);
@@ -272,11 +253,21 @@
 }
 
 @media (max-width: 900px) {
-  .metricsGrid { grid-template-columns: 1fr; }
-  .metricPanel + .metricPanel { border-left: 0; }
-  .metricPanel:nth-child(n + 2) { border-top: 1px solid var(--line-strong); }
+  .metricsGrid {
+    grid-template-columns: 1fr;
+  }
+  .metricPanel + .metricPanel {
+    border-left: 0;
+  }
+  .metricPanel:nth-child(n + 2) {
+    border-top: 1px solid var(--line-strong);
+  }
 }
 
 @media (max-width: 700px) {
-  .pageHeader { align-items: flex-start; flex-direction: column; gap: 16px; }
+  .pageHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
 }

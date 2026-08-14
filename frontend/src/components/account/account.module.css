@@ -1,40 +1,37 @@
 .account {
-  border-left: 3px solid #ff8200;
   display: grid;
-  gap: 5px;
+  gap: 1px;
   min-width: 0;
-  padding-left: 10px;
 }
-
-.account p {
+.org {
   margin: 0;
-  min-width: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-
-.org {
-  font-size: 13px;
-  font-weight: 700;
-}
-
 .email {
-  color: #737373;
+  margin: 0;
+  color: var(--muted);
   font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-
-.account button {
-  background: transparent;
-  border: 0;
-  color: #737373;
-  cursor: pointer;
-  font-size: 11px;
-  font-weight: 650;
+.logout {
   justify-self: start;
+  margin-top: 4px;
+  border: 0;
+  background: transparent;
   padding: 0;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 160ms ease;
 }
-
-.account button:hover {
-  color: #171717;
+@media (hover: hover) and (pointer: fine) {
+  .logout:hover {
+    color: var(--ink);
+  }
 }

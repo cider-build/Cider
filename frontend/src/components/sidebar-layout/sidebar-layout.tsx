@@ -1,72 +1,118 @@
 import type { ReactNode } from "react";
 import { NavLink, Outlet } from "react-router";
-import { NodeIcon } from "../node-icon";
+import { Icon } from "../ui/ui";
+import { useTheme } from "../../theme";
 import styles from "./sidebar-layout.module.css";
 
-const ICONS = {
-  sandboxes: (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 8.2 12 3 3 8.2v7.6L12 21l9-5.2V8.2z" />
-      <path d="M3 8.2l9 5.2 9-5.2" />
-      <path d="M12 13.4V21" />
-    </svg>
-  ),
-  servers: (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="4" width="18" height="7" rx="1.6" />
-      <rect x="3" y="13" width="18" height="7" rx="1.6" />
-      <path d="M7 7.5h.01" />
-      <path d="M7 16.5h.01" />
-    </svg>
-  ),
-  nodes: <NodeIcon />,
-  snapshots: (
-    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 3l9 5-9 5-9-5 9-5z" />
-      <path d="M3 13l9 5 9-5" />
-    </svg>
-  ),
-};
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const dark = theme === "dark";
+  return (
+    <button
+      type="button"
+      className={styles.theme}
+      onClick={toggle}
+      aria-pressed={dark}
+      aria-label={dark ? "Switch to light theme" : "Switch to dark theme"}
+      title={dark ? "Switch to light theme" : "Switch to dark theme"}
+    >
+      <svg
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden="true"
+      >
+        {dark ? (
+          <path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5Z" />
+        ) : (
+          <>
+            <circle cx="12" cy="12" r="4" />
+            <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
 
-function NavItem({ to, icon, children }: { to: string; icon: ReactNode; children: ReactNode }) {
+function NavItem({
+  to,
+  page,
+  children,
+}: {
+  to: string;
+  page: "servers" | "sandboxes" | "nodes" | "snapshots";
+  children: ReactNode;
+}) {
   return (
     <NavLink
-      className={({ isActive }) => (isActive ? `${styles.link} ${styles.active}` : styles.link)}
+      className={({ isActive }) =>
+        isActive ? `${styles.link} ${styles.active}` : styles.link
+      }
       to={to}
     >
-      {icon}
+      <Icon name={page} />
       {children}
     </NavLink>
   );
 }
 
-export function SidebarLayout({
-  account,
-}: {
-  account: ReactNode;
-}) {
+export function SidebarLayout({ account }: { account: ReactNode }) {
   return (
     <div className={styles.layout}>
       <aside className={styles.sidebar}>
-        <div className={styles.logo}>
-          cider<em>.</em>
-        </div>
-        <nav className={styles.nav}>
-          <div className={styles.navGroup}>
-            <p className={styles.navLabel}>Workloads</p>
-            <NavItem to="/sandboxes" icon={ICONS.sandboxes}>Sandboxes</NavItem>
-            <NavItem to="/servers" icon={ICONS.servers}>Servers</NavItem>
+        <span className={styles.logo}>
+          <span className={styles.mark} aria-hidden="true">
+            <i />
+            <i />
+            <i />
+            <i />
+          </span>
+          <b>
+            cider<span>.</span>
+          </b>
+        </span>
+        <label className={styles.search}>
+          <Icon name="search" />
+          <input
+            type="text"
+            placeholder="Search all"
+            aria-label="Search all resources"
+            autoComplete="off"
+            spellCheck={false}
+          />
+        </label>
+        <nav className={styles.nav} aria-label="Primary">
+          <div>
+            <span className={styles.navLabel}>Compute</span>
+            <NavItem to="/servers" page="servers">
+              Servers
+            </NavItem>
+            <NavItem to="/sandboxes" page="sandboxes">
+              Sandboxes
+            </NavItem>
           </div>
-          <div className={styles.navGroup}>
-            <p className={styles.navLabel}>Resources</p>
-            <NavItem to="/nodes" icon={ICONS.nodes}>Nodes</NavItem>
-            <NavItem to="/snapshots" icon={ICONS.snapshots}>Snapshots</NavItem>
+          <div>
+            <span className={styles.navLabel}>Infrastructure</span>
+            <NavItem to="/nodes" page="nodes">
+              Nodes
+            </NavItem>
+            <NavItem to="/snapshots" page="snapshots">
+              Snapshots
+            </NavItem>
           </div>
         </nav>
-        <div className={styles.spacer} />
-        {account}
+        <div className={styles.foot}>
+          {account}
+          <ThemeToggle />
+        </div>
       </aside>
-      <main className={styles.main}><Outlet /></main>
+      <main className={styles.main}>
+        <Outlet />
+      </main>
     </div>
   );
 }

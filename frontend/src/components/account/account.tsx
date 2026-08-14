@@ -14,7 +14,14 @@ export function Account({ auth }: { auth: AuthOut }) {
     <section className={styles.account}>
       <p className={styles.org}>{auth.organization.name}</p>
       <p className={styles.email}>{auth.user.email}</p>
-      <button onClick={() => logout.mutate()} disabled={logout.isPending}>Log out</button>
+      <button
+        type="button"
+        className={styles.logout}
+        onClick={() => logout.mutate()}
+        disabled={logout.isPending}
+      >
+        {logout.isPending ? "Logging out" : "Log out"}
+      </button>
     </section>
   );
 }

@@ -1,0 +1,304 @@
+:root {
+  --control-height: 27px;
+  --control-padding: 10px;
+  --control-radius: 2px;
+  --control-fill: var(--panel);
+  --control-hover-fill: var(--panel);
+  --control-line: var(--line);
+  --control-hover-line: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+[data-theme="dark"] {
+  --control-fill: color-mix(in srgb, var(--ink) 9%, transparent);
+  --control-hover-fill: color-mix(in srgb, var(--ink) 15%, transparent);
+  --control-line: color-mix(in srgb, var(--ink) 22%, transparent);
+  --control-hover-line: color-mix(in srgb, var(--ink) 32%, transparent);
+}
+
+.ui-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--control-height);
+  border: 1px solid var(--control-line);
+  border-radius: var(--control-radius);
+  background: var(--control-fill);
+  padding: 0 var(--control-padding);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform 160ms var(--ease),
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease;
+}
+
+.ui-btn[data-block] {
+  width: 100%;
+}
+
+.ui-btn:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+.ui-btn:active {
+  transform: scale(0.97);
+}
+
+.ui-btn[data-kind="primary"] {
+  border-color: var(--orange);
+  background: var(--orange);
+  color: #fff;
+  font-weight: 600;
+}
+
+.ui-btn[data-kind="quiet"] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.ui-btn:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ui-btn[data-loading] {
+  position: relative;
+  color: transparent;
+}
+
+.ui-btn[data-loading]:disabled {
+  opacity: 1;
+}
+
+.ui-btn[data-loading] .ui-spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  color: var(--muted);
+  animation: ui-spin 700ms linear infinite;
+}
+
+.ui-btn[data-kind="primary"][data-loading] .ui-spinner {
+  color: #fff;
+}
+
+.ui-status {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.ui-status[data-status="stopped"],
+.ui-status[data-status="offline"] {
+  color: #8d3f37;
+}
+
+.ui-status[data-status="provisioning"],
+.ui-status[data-status="expiring"] {
+  color: #9a5a16;
+}
+
+.ui-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.ui-dropdown-trigger {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  min-height: var(--control-height);
+  border: 1px solid var(--control-line);
+  border-radius: var(--control-radius);
+  background: var(--control-fill);
+  padding: 0 8px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.ui-dropdown-trigger:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: -1px;
+}
+
+.ui-dropdown-label {
+  flex: none;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.ui-dropdown-trigger b {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-chevron {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  color: var(--muted);
+  transition: transform 140ms var(--ease);
+}
+
+.ui-chevron[data-open] {
+  transform: rotate(180deg);
+}
+
+.ui-dropdown-list {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 3px);
+  left: 0;
+  min-width: 100%;
+  max-height: 264px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 3px;
+  outline: 0;
+  box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
+}
+
+.ui-dropdown-list[data-up] {
+  top: auto;
+  bottom: calc(100% + 3px);
+  box-shadow: 0 -12px 32px rgb(0 0 0 / 16%);
+}
+
+.ui-dropdown-list [role="option"] {
+  display: flex;
+  align-items: center;
+  min-height: 29px;
+  padding: 0 8px;
+  color: var(--ink);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-dropdown-list [role="option"][data-active] {
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+}
+
+.ui-dropdown-list [role="option"][aria-selected="true"] {
+  font-weight: 600;
+}
+
+.ui-linkout {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: color 140ms ease;
+}
+
+.ui-linkout svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.ui-linkout:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+.ui-id {
+  display: inline-block;
+  max-width: 116px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-id[data-wide] {
+  max-width: 208px;
+}
+
+.ui-grid-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-opacity: 0.1;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.ui-icon {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ui-btn:hover {
+    border-color: var(--control-hover-line);
+    background: var(--control-hover-fill);
+  }
+
+  .ui-btn[data-kind="primary"]:hover {
+    border-color: #ff9526;
+    background: #ff9526;
+  }
+
+  .ui-btn[data-kind="quiet"]:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--ink) 7%, transparent);
+    color: var(--ink);
+  }
+
+  .ui-dropdown-trigger:hover {
+    border-color: var(--control-hover-line);
+  }
+
+  .ui-linkout:hover {
+    color: var(--ink);
+  }
+}
+
+@keyframes ui-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-btn {
+    transition:
+      background-color 160ms ease,
+      border-color 160ms ease,
+      color 160ms ease;
+  }
+
+  .ui-btn:active {
+    transform: none;
+  }
+
+  .ui-btn[data-loading] .ui-spinner {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

@@ -1,111 +1,177 @@
 .layout {
   display: grid;
-  grid-template-columns: 230px 1fr;
+  grid-template-columns: 212px minmax(0, 1fr);
   min-height: 100vh;
+  background: var(--bg);
 }
 
 .sidebar {
-  border-right: 1px solid var(--line-strong);
-  display: flex;
-  flex-direction: column;
-  height: 100vh;
-  padding: 22px 20px;
   position: sticky;
   top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  height: 100vh;
+  border-right: 1px solid var(--line);
+  background: var(--panel);
+  padding: 20px 12px 14px;
 }
 
 .logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 8px 8px;
   color: var(--ink);
-  font-family: "Montserrat", ui-sans-serif, system-ui, sans-serif;
-  font-size: 22px;
+}
+.logo b {
+  font-size: 21px;
   font-weight: 800;
-  letter-spacing: -0.4px;
-  line-height: 1;
+  letter-spacing: -0.7px;
+}
+.logo b span {
+  color: var(--orange);
+}
+.mark {
+  position: relative;
+  display: block;
+  width: 30px;
+  height: 22px;
+}
+.mark i {
+  position: absolute;
+  height: 5px;
+  border-radius: 8px;
+  background: currentColor;
+}
+.mark i:nth-child(1) {
+  top: 0;
+  left: 8px;
+  width: 15px;
+}
+.mark i:nth-child(2) {
+  top: 8px;
+  left: 0;
+  width: 14px;
+}
+.mark i:nth-child(3) {
+  top: 8px;
+  right: 0;
+  width: 12px;
+  background: var(--orange);
+}
+.mark i:nth-child(4) {
+  bottom: 0;
+  left: 8px;
+  width: 15px;
 }
 
-.logo em {
-  color: var(--orange);
-  font-style: normal;
+.search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: var(--bg);
+  padding: 0 9px;
+  color: var(--muted);
+}
+.search input {
+  min-width: 0;
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
 }
 
 .nav {
   display: grid;
-  gap: 26px;
-  margin-top: 30px;
+  gap: 18px;
 }
-
-.navGroup {
+.nav > div {
   display: grid;
   gap: 2px;
 }
-
 .navLabel {
-  color: var(--faint);
-  font-size: 11px;
+  padding: 0 10px 6px;
+  color: var(--muted);
+  font-size: 10px;
   font-weight: 600;
-  letter-spacing: normal;
-  margin: 0 0 4px;
-  padding-left: 12px;
 }
 
 .link {
-  align-items: center;
-  border-radius: 8px;
-  color: var(--muted);
   display: flex;
-  font-size: 14px;
-  font-weight: 600;
-  gap: 11px;
-  margin: 0 -12px;
-  min-height: 40px;
-  padding: 10px 12px 10px 24px;
-  position: relative;
+  align-items: center;
+  gap: 9px;
+  min-height: 34px;
+  border-radius: 2px;
+  padding: 0 10px;
+  color: var(--muted);
+  font-size: 12px;
   text-decoration: none;
-  transition: color 150ms var(--ease), background 150ms var(--ease);
+  transition:
+    background-color 160ms var(--ease),
+    color 160ms ease;
 }
-
-.link svg {
-  flex: none;
-}
-
-.link:hover {
-  background: #f1f1f1;
-  color: #3f3f3f;
-}
-
-.link:active {
-  transform: scale(0.97);
-}
-
-.link::before {
-  background: var(--orange);
-  border-radius: 3px;
-  content: "";
-  height: 16px;
-  left: 10px;
-  opacity: 0;
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%) scaleY(0.4);
-  transition: opacity 150ms var(--ease), transform 150ms var(--ease);
-  width: 3px;
-}
-
-.link.active {
+.active {
+  background: var(--soft);
   color: var(--ink);
 }
 
-.link.active::before {
-  opacity: 1;
-  transform: translateY(-50%) scaleY(1);
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: auto;
+  border-top: 1px solid var(--line);
+  padding-top: 13px;
 }
-
-.spacer {
+.foot > *:first-child {
+  min-width: 0;
   flex: 1;
 }
 
+.theme {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  flex: none;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color 160ms ease,
+    color 160ms ease,
+    border-color 160ms ease;
+}
+.theme svg {
+  width: 15px;
+  height: 15px;
+}
+.theme:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+.theme:active {
+  transform: scale(0.94);
+}
+
 .main {
-  background: var(--bg);
   min-width: 0;
-  padding: 30px 40px 80px;
+  padding: 24px 28px 80px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .link:hover {
+    color: var(--ink);
+  }
+  .theme:hover {
+    border-color: var(--muted);
+    color: var(--ink);
+  }
 }

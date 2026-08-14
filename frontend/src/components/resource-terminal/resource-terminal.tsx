@@ -33,7 +33,8 @@ export function ResourceTerminal({
       convertEol: false,
       cursorBlink: true,
       cursorStyle: "bar",
-      fontFamily: '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+      fontFamily:
+        '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
       fontSize: 13,
       fontWeight: "400",
       fontWeightBold: "600",
@@ -76,18 +77,23 @@ export function ResourceTerminal({
     const sendSize = () => {
       fit.fit();
       if (socket?.readyState !== WebSocket.OPEN) return;
-      socket.send(JSON.stringify({
-        term: "xterm-256color",
-        resize: { cols: terminal.cols, rows: terminal.rows },
-      }));
+      socket.send(
+        JSON.stringify({
+          term: "xterm-256color",
+          resize: { cols: terminal.cols, rows: terminal.rows },
+        }),
+      );
     };
 
     const dataInput = terminal.onData((data) => {
-      if (socket?.readyState === WebSocket.OPEN) socket.send(encoder.encode(data));
+      if (socket?.readyState === WebSocket.OPEN)
+        socket.send(encoder.encode(data));
     });
     const binaryInput = terminal.onBinary((data) => {
       if (socket?.readyState !== WebSocket.OPEN) return;
-      const bytes = Uint8Array.from(data, (character) => character.charCodeAt(0));
+      const bytes = Uint8Array.from(data, (character) =>
+        character.charCodeAt(0),
+      );
       socket.send(bytes);
     });
     const observer = new ResizeObserver(sendSize);
@@ -95,7 +101,9 @@ export function ResourceTerminal({
 
     const connectTimer = window.setTimeout(() => {
       if (disposed) return;
-      const currentSocket = new WebSocket(resourceTerminalUrl(kind, resourceId));
+      const currentSocket = new WebSocket(
+        resourceTerminalUrl(kind, resourceId),
+      );
       currentSocket.binaryType = "arraybuffer";
       socket = currentSocket;
       currentSocket.addEventListener("open", () => {
@@ -106,15 +114,22 @@ export function ResourceTerminal({
         sendSize();
         terminal.focus();
       });
-      currentSocket.addEventListener("message", (event: MessageEvent<ArrayBuffer>) => {
-        if (typeof event.data === "string") {
-          currentSocket.close(1003, "Text output is not supported");
-          return;
-        }
-        setConnection("connected");
-        terminal.write(new Uint8Array(event.data));
-        terminal.focus();
-      });
+      let announced = false;
+      currentSocket.addEventListener(
+        "message",
+        (event: MessageEvent<ArrayBuffer>) => {
+          if (typeof event.data === "string") {
+            currentSocket.close(1003, "Text output is not supported");
+            return;
+          }
+          /* Avoid React renders for each output frame. */
+          if (!announced) {
+            announced = true;
+            setConnection("connected");
+          }
+          terminal.write(new Uint8Array(event.data));
+        },
+      );
       currentSocket.addEventListener("error", () => {
         if (!disposed) setConnection("disconnected");
       });
@@ -130,7 +145,8 @@ export function ResourceTerminal({
       observer.disconnect();
       dataInput.dispose();
       binaryInput.dispose();
-      if (socket?.readyState === WebSocket.OPEN) socket.close(1000, "Terminal closed");
+      if (socket?.readyState === WebSocket.OPEN)
+        socket.close(1000, "Terminal closed");
       terminal.dispose();
       terminalRef.current = null;
     };
@@ -146,7 +162,11 @@ export function ResourceTerminal({
   }
 
   return (
-    <section className={styles.shell} aria-label="Terminal" onClick={() => terminalRef.current?.focus()}>
+    <section
+      className={styles.shell}
+      aria-label="Terminal"
+      onClick={() => terminalRef.current?.focus()}
+    >
       <div className={styles.terminal} ref={hostRef} />
       {connection !== "connected" && (
         <div className={styles.connection} aria-live="polite">
@@ -158,7 +178,12 @@ export function ResourceTerminal({
           ) : (
             <>
               <span>Not connected</span>
-              <button type="button" onClick={() => setSession((value) => value + 1)}>Reconnect</button>
+              <button
+                type="button"
+                onClick={() => setSession((value) => value + 1)}
+              >
+                Reconnect
+              </button>
             </>
           )}
         </div>
