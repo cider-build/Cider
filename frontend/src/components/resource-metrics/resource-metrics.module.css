@@ -24,8 +24,6 @@
   color: var(--muted);
   cursor: pointer;
   font-family: inherit;
-  font-size: var(--detail-label-size);
-  font-weight: var(--detail-body-weight);
   min-height: 23px;
   padding: 0 10px;
   transition:
@@ -77,13 +75,5 @@
   .metricsGrid > * + * {
     border-left: 0;
     border-top: 1px solid var(--line-strong);
-  }
-}
-
-@media (width <= 700px) {
-  .pageHeader {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 16px;
   }
 }

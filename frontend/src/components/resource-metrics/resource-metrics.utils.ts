@@ -1,6 +1,5 @@
 import type { MetricSample, MetricWindow } from "../../api";
 
-export type ResourceKind = "server" | "sandbox";
 export type Point = { x: number; y: number; time: number; value: number };
 
 export const MEBIBYTE = 1024 ** 2;
@@ -75,13 +74,6 @@ export function nearestPoint(points: Point[], x: number) {
   return nearest;
 }
 
-export function average(values: number[]) {
-  return values.reduce((total, value) => total + value, 0) / values.length;
-}
-
-export function windowValue(value: string | null): MetricWindow {
-  if (value === null) return "live";
-  if (WINDOWS.some((window) => window.value === value))
-    return value as MetricWindow;
-  throw new Error(`Unknown metric window: ${value}`);
+export function windowOption(value: string | null) {
+  return WINDOWS.find((window) => window.value === value) ?? WINDOWS[0];
 }

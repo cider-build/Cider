@@ -31,7 +31,7 @@ export function MetricChart({
     );
   }
   const line = pathFor(points);
-  const area = `${line} L${points.at(-1)?.x.toFixed(2)},160 L${points[0].x.toFixed(2)},160 Z`;
+  const area = `${line} L${points[points.length - 1].x.toFixed(2)},160 L${points[0].x.toFixed(2)},160 Z`;
   const start = end - duration;
   const xLabels = [start, start + duration / 2, end];
   const onPointerMove = (event: ReactPointerEvent<SVGSVGElement>) => {

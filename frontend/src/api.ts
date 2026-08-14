@@ -68,6 +68,7 @@ export type Server = {
   created_at: string;
   deleted_at: string | null;
 };
+export type ResourceKind = "server" | "sandbox";
 export type MetricWindow = "live" | "1h" | "24h";
 export type MetricSample = {
   cpu_percent: number;
@@ -87,12 +88,7 @@ export type Snapshot = {
   size_bytes: number | null;
 };
 
-type RequestOptions = { method?: string; json?: unknown };
-
-async function responseBody<T>(response: Response): Promise<T> {
-  const body: unknown = await response.json();
-  return body as T;
-}
+type RequestOptions = { method?: string; json?: unknown; nullStatus?: number };
 
 async function responseError(response: Response): Promise<Error> {
   const body: unknown = await response.json();
@@ -120,24 +116,19 @@ async function request<T>(
         : { "content-type": "application/json" },
     body: options.json === undefined ? undefined : JSON.stringify(options.json),
   });
+  if (response.status === options.nullStatus) {
+    return null as T;
+  }
   if (!response.ok) {
     throw await responseError(response);
   }
   return response.status === 204
     ? (undefined as T)
-    : responseBody<T>(response);
+    : ((await response.json()) as T);
 }
 
-export async function me(): Promise<AuthOut | null> {
-  const response = await fetch(`${API_URL}/auth/me`, {
-    credentials: "include",
-  });
-  if (response.status === 401) return null;
-  if (!response.ok) {
-    throw await responseError(response);
-  }
-  return responseBody<AuthOut>(response);
-}
+export const me = () =>
+  request<AuthOut | null>("/auth/me", { nullStatus: 401 });
 
 export const signup = (body: SignupInput) =>
   request<AuthOut>("/auth/signup", { method: "POST", json: body });
@@ -182,7 +173,7 @@ export const listServers = () =>
   request<Server[]>("/servers?include_deleted=true");
 export const getServer = (id: string) => request<Server>(`/servers/${id}`);
 export const getResourceMetrics = (
-  kind: "server" | "sandbox",
+  kind: ResourceKind,
   id: string,
   window: MetricWindow,
 ) => request<MetricHistory>(`/${kind}s/${id}/metrics?window=${window}`);
@@ -214,7 +205,7 @@ export const listSandboxes = () => request<Sandbox[]>("/sandboxes");
 export const getSandbox = (id: string) => request<Sandbox>(`/sandboxes/${id}`);
 
 export function resourceTerminalUrl(
-  kind: "sandbox" | "server",
+  kind: ResourceKind,
   id: string,
 ): string {
   const url = new URL(API_URL);

@@ -3,9 +3,9 @@ import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
 import { useEffect, useRef, useState } from "react";
 import { resourceTerminalUrl } from "../../api";
+import type { ResourceKind } from "../../api";
 import styles from "./resource-terminal.module.css";
 
-type ResourceKind = "sandbox" | "server";
 type ConnectionState = "connecting" | "connected" | "disconnected";
 
 export function ResourceTerminal({

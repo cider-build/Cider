@@ -46,7 +46,7 @@ export function NodesPage() {
       <DataTable
         head={["ID", "Name", "Chip", "CPU", "Memory", "Connection"]}
         rows={PER_PAGE}
-        error={nodes.error === null ? null : (nodes.error).message}
+        error={nodes.error?.message}
         empty={
           nodes.status === "pending"
             ? "Loading nodes"
@@ -76,7 +76,7 @@ export function NodesPage() {
         ))}
       </DataTable>
       <Pager
-        page={page}
+        page={Math.min(page, pages - 1)}
         pages={pages}
         total={total}
         shown={PER_PAGE}

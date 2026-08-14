@@ -1,4 +1,4 @@
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { extname, join, parse } from "node:path";
 
 const COMPONENTS = new URL("../src/components/", import.meta.url);
@@ -29,8 +29,12 @@ for (const component of components) {
     errors.push(`${component}: component filename must match its directory`);
   }
 
-  if (!files.includes(stylesheet)) {
+  const imports = (await readFile(component, "utf8")).includes(".module.css");
+  if (imports && !files.includes(stylesheet)) {
     errors.push(`${component}: missing ${parsed.name}.module.css`);
+  }
+  if (!imports && files.includes(stylesheet)) {
+    errors.push(`${component}: delete the unused ${parsed.name}.module.css`);
   }
 }
 

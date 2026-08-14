@@ -2,11 +2,8 @@
   background: var(--card);
   border: 1px solid var(--line-strong);
   border-radius: 12px;
-  padding: 20px;
-}
-
-.raised {
   box-shadow: 3px 3px 0 0 var(--color-shadow-card);
+  padding: 20px;
 }
 
 .card h3 {

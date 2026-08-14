@@ -32,9 +32,3 @@
 .signal span {
   color: var(--muted);
 }
-
-.chart {
-  height: 26px;
-  margin-top: 9px;
-  color: var(--muted);
-}

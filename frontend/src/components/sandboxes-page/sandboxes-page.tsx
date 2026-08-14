@@ -7,6 +7,7 @@ import {
   pauseSandbox,
   resumeSandbox,
 } from "../../api";
+import type { Sandbox } from "../../api";
 import { Button, Id, StatusText } from "../ui";
 import {
   DataTable,
@@ -17,55 +18,48 @@ import {
   SearchField,
   StatusFilter,
   Toolbar,
+  useSearchedPage,
 } from "../list";
 import {
+  created,
   isTransitional,
+  label,
   pollWhileTransitional,
   sandboxName,
 } from "../ui/names";
-import type { Sandbox } from "../../api";
-import {
-  created,
-  label,
-  useSandboxAction,
-} from "./sandboxes-page.utils";
+import { useListAction } from "../ui/actions";
 
 const PER_PAGE = 15;
 const STATUSES = ["All", "Active", "Paused", "Stopped"];
 
 export function SandboxesPage() {
   const navigate = useNavigate();
-  const [query, setQuery] = useState("");
   const [status, setStatus] = useState("All");
-  const [page, setPage] = useState(0);
   const sandboxes = useQuery({
     queryKey: ["sandboxes"],
     queryFn: listSandboxes,
     refetchInterval: (query) => pollWhileTransitional(query.state.data),
   });
-  const pause = useSandboxAction(pauseSandbox);
-  const resume = useSandboxAction(resumeSandbox);
-  const remove = useSandboxAction(deleteSandbox);
+  const pause = useListAction<Sandbox>("sandboxes", pauseSandbox);
+  const resume = useListAction<Sandbox>("sandboxes", resumeSandbox);
+  const remove = useListAction<Sandbox>("sandboxes", deleteSandbox);
   const pending = pause.isPending || resume.isPending || remove.isPending;
-  const error
-    = [pause.error, resume.error, remove.error, sandboxes.error].find(Boolean)
-      ?? null;
+  const error = [pause.error, resume.error, remove.error, sandboxes.error].find(
+    Boolean,
+  );
 
   const all = (sandboxes.data ?? []).filter(
     (sandbox) => sandbox.deleted_at === null,
   );
-  const needle = query.trim().toLowerCase();
-  const matches = all.filter((sandbox) => {
-    const haystack
-      = `${sandboxName(sandbox.id)} ${sandbox.node_name}`.toLowerCase();
-    return (
-      haystack.includes(needle)
-      && (status === "All" || label(sandbox.status) === status)
-    );
-  });
-  const pages = Math.max(1, Math.ceil(matches.length / PER_PAGE));
-  const current = Math.min(page, pages - 1);
-  const slice = matches.slice(current * PER_PAGE, (current + 1) * PER_PAGE);
+  const list = useSearchedPage(
+    all,
+    (sandbox, needle) =>
+      `${sandboxName(sandbox.id)} ${sandbox.node_name}`
+        .toLowerCase()
+        .includes(needle)
+        && (status === "All" || label(sandbox.status) === status),
+    PER_PAGE,
+  );
 
   function rowActions(sandbox: Sandbox) {
     const working = (mutation: { isPending: boolean; variables?: string }) =>
@@ -115,11 +109,8 @@ export function SandboxesPage() {
       <PageHead title="Sandboxes" />
       <Toolbar>
         <SearchField
-          value={query}
-          onChange={(value) => {
-            setQuery(value);
-            setPage(0);
-          }}
+          value={list.query}
+          onChange={list.setQuery}
           placeholder="Search sandboxes"
         />
         <StatusFilter
@@ -127,21 +118,21 @@ export function SandboxesPage() {
           value={status}
           onChange={(value) => {
             setStatus(value);
-            setPage(0);
+            list.setPage(0);
           }}
         />
       </Toolbar>
       <DataTable
         head={["Sandbox", "Node", "Created", "State", ""]}
         rows={PER_PAGE}
-        error={error === null ? null : (error).message}
+        error={error?.message}
         empty={
           sandboxes.status === "pending"
             ? "Loading sandboxes"
             : "No sandboxes yet. Run cider open in a project and one appears here."
         }
       >
-        {slice.map((sandbox) => (
+        {list.slice.map((sandbox) => (
           <Row
             key={sandbox.id}
             onOpen={() => {
@@ -163,11 +154,11 @@ export function SandboxesPage() {
         ))}
       </DataTable>
       <Pager
-        page={current}
-        pages={pages}
-        total={matches.length}
+        page={list.page}
+        pages={list.pages}
+        total={list.total}
         shown={PER_PAGE}
-        onPage={setPage}
+        onPage={list.setPage}
       />
     </section>
   );

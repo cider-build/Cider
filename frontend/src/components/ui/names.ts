@@ -7,6 +7,29 @@ export function displayGb(bytes: number) {
   return `${gb >= 100 ? Math.round(gb) : gb.toFixed(1)} GB`;
 }
 
+export function bytes(value: number | null) {
+  if (value === null) return "—";
+  return `${(value / 1024 ** 3).toFixed(1)} GB`;
+}
+
+export function label(status: string) {
+  return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+export function created(value: string) {
+  return new Date(value).toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+export function required(value: string | undefined, name: string) {
+  if (value === undefined) throw new Error(`Missing ${name}`);
+  return value;
+}
+
 const SETTLED = new Set([
   "running",
   "stopped",

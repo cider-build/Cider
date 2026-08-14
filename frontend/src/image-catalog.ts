@@ -95,6 +95,12 @@ export const SOFTWARE: Software[] = [
   },
 ];
 
+export function macos(image: string | null | undefined) {
+  if (image == null) return "—";
+  const release = OS_RELEASES.find((item) => image.includes(item.id));
+  return release ? `${release.version} ${release.name}` : image;
+}
+
 export const OPENCLAW_CHANNELS: Channel[] = [
   { id: "imessage", name: "iMessage", description: "Native on macOS via the signed-in Messages app.", plugin: false, logo: "https://cdn.simpleicons.org/imessage/34DA50" },
   { id: "webchat", name: "WebChat", description: "Browser chat UI, ships with the core install.", plugin: false, logo: null },
@@ -103,7 +109,3 @@ export const OPENCLAW_CHANNELS: Channel[] = [
   { id: "slack", name: "Slack", description: "Official plugin.", plugin: true, logo: "https://svgl.app/library/slack.svg" },
   { id: "whatsapp", name: "WhatsApp", description: "Official plugin, links via QR code.", plugin: true, logo: "https://cdn.simpleicons.org/whatsapp/25D366" },
 ];
-
-export function imageReference(os: OsId, variant: VariantId) {
-  return `ghcr.io/cirruslabs/macos-${os}-${variant}:latest`;
-}

@@ -1,5 +1,4 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
 import { deleteSnapshot, listSnapshots, restoreSnapshot } from "../../api";
 import { Button, Id } from "../ui";
 import {
@@ -10,16 +9,14 @@ import {
   RowActions,
   SearchField,
   Toolbar,
+  useSearchedPage,
 } from "../list";
-import { sandboxName } from "../ui/names";
-import { created, size } from "./snapshots-page.utils";
+import { bytes, created, sandboxName } from "../ui/names";
 
 const PER_PAGE = 15;
 
 export function SnapshotsPage() {
   const queryClient = useQueryClient();
-  const [query, setQuery] = useState("");
-  const [page, setPage] = useState(0);
   const snapshots = useQuery({
     queryKey: ["snapshots"],
     queryFn: listSnapshots,
@@ -33,46 +30,41 @@ export function SnapshotsPage() {
   const restore = useMutation({ mutationFn: restoreSnapshot, ...settle });
   const remove = useMutation({ mutationFn: deleteSnapshot, ...settle });
   const pending = restore.isPending || remove.isPending;
-  const error
-    = [restore.error, remove.error, snapshots.error].find(Boolean) ?? null;
+  const error = [restore.error, remove.error, snapshots.error].find(Boolean);
 
   const all = (snapshots.data ?? []).filter(
     (snapshot) => snapshot.deleted_at === null,
   );
-  const needle = query.trim().toLowerCase();
-  const matches = all.filter((snapshot) =>
-    `${snapshot.id} ${snapshot.source_sandbox_id}`
-      .toLowerCase()
-      .includes(needle),
+  const list = useSearchedPage(
+    all,
+    (snapshot, needle) =>
+      `${snapshot.id} ${snapshot.source_sandbox_id}`
+        .toLowerCase()
+        .includes(needle),
+    PER_PAGE,
   );
-  const pages = Math.max(1, Math.ceil(matches.length / PER_PAGE));
-  const current = Math.min(page, pages - 1);
-  const slice = matches.slice(current * PER_PAGE, (current + 1) * PER_PAGE);
 
   return (
     <section>
       <PageHead title="Snapshots" />
       <Toolbar>
         <SearchField
-          value={query}
-          onChange={(value) => {
-            setQuery(value);
-            setPage(0);
-          }}
+          value={list.query}
+          onChange={list.setQuery}
           placeholder="Search snapshots"
         />
       </Toolbar>
       <DataTable
         head={["ID", "Source sandbox", "Size", "Created", ""]}
         rows={PER_PAGE}
-        error={error === null ? null : (error).message}
+        error={error?.message}
         empty={
           snapshots.status === "pending"
             ? "Loading snapshots"
             : "No snapshots yet. A snapshot is taken from a sandbox."
         }
       >
-        {slice.map((snapshot) => (
+        {list.slice.map((snapshot) => (
           <Row key={snapshot.id}>
             <td>
               <Id value={snapshot.id} />
@@ -82,7 +74,7 @@ export function SnapshotsPage() {
                 <Id value={sandboxName(snapshot.source_sandbox_id)} wide />
               </b>
             </td>
-            <td>{size(snapshot.size_bytes)}</td>
+            <td>{bytes(snapshot.size_bytes)}</td>
             <td>{created(snapshot.created_at)}</td>
             <td>
               <RowActions>
@@ -115,11 +107,11 @@ export function SnapshotsPage() {
         ))}
       </DataTable>
       <Pager
-        page={current}
-        pages={pages}
-        total={matches.length}
+        page={list.page}
+        pages={list.pages}
+        total={list.total}
         shown={PER_PAGE}
-        onPage={setPage}
+        onPage={list.setPage}
       />
     </section>
   );

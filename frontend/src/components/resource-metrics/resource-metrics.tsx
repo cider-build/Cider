@@ -1,11 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
-import { Cpu, MemoryStick } from "lucide-react";
+import { Cpu, MemoryStick, MonitorUp } from "lucide-react";
 import { useSearchParams } from "react-router";
 import { getResourceMetrics } from "../../api";
-import { GraphicsPanel } from "../graphics-panel/graphics-panel";
-import { PercentPanel } from "../percent-panel/percent-panel";
-import { WINDOWS, windowValue } from "./resource-metrics.utils";
-import type { ResourceKind } from "./resource-metrics.utils";
+import type { ResourceKind } from "../../api";
+import { MetricPanel } from "../metric-panel/metric-panel";
+import { MEBIBYTE, WINDOWS, windowOption } from "./resource-metrics.utils";
 import styles from "./resource-metrics.module.css";
 
 export function ResourceMetrics({
@@ -18,10 +17,8 @@ export function ResourceMetrics({
   running: boolean;
 }) {
   const [search, setSearch] = useSearchParams();
-  const window = windowValue(search.get("window"));
-  const selectedWindow = WINDOWS.find((item) => item.value === window);
-  if (selectedWindow === undefined)
-    throw new Error(`Missing metric window: ${window}`);
+  const selectedWindow = windowOption(search.get("window"));
+  const window = selectedWindow.value;
 
   const history = useQuery({
     queryKey: [kind, id, "metrics", window],
@@ -61,26 +58,37 @@ export function ResourceMetrics({
             )
           : (
               <div className={styles.metricsGrid}>
-                <PercentPanel
+                <MetricPanel
                   title="CPU"
                   icon={<Cpu size={16} />}
                   samples={samples}
                   duration={selectedWindow.duration}
                   end={chartEnd}
                   value={(sample) => sample.cpu_percent}
+                  format={(metric) => `${metric.toFixed(1)}%`}
+                  chartFormat={(metric) => `${metric.toFixed(0)}%`}
                 />
-                <PercentPanel
+                <MetricPanel
                   title="Memory"
                   icon={<MemoryStick size={16} />}
                   samples={samples}
                   duration={selectedWindow.duration}
                   end={chartEnd}
                   value={(sample) => sample.memory_percent}
+                  format={(metric) => `${metric.toFixed(1)}%`}
+                  chartFormat={(metric) => `${metric.toFixed(0)}%`}
                 />
-                <GraphicsPanel
+                <MetricPanel
+                  title="Graphics"
+                  chartLabel="Graphics memory"
+                  icon={<MonitorUp size={16} />}
                   samples={samples}
                   duration={selectedWindow.duration}
                   end={chartEnd}
+                  value={(sample) => sample.graphics_memory_bytes / MEBIBYTE}
+                  format={(metric) => `${metric.toFixed(0)} MB`}
+                  maximum={(values) => Math.max(256, ...values)}
+                  summaryLeft={<span>VM graphics memory</span>}
                 />
               </div>
             )}

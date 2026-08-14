@@ -11,26 +11,11 @@
   --line-strong: var(--color-border-strong);
   --ink: var(--color-text);
   --muted: var(--color-text-muted);
-  --faint: var(--color-text-faint);
   --card: var(--color-background-panel);
   --orange: var(--color-accent);
-  --orange-deep: var(--color-accent-shadow);
   --danger: var(--color-danger);
   --ease: var(--ease-standard);
   --app-font-family: var(--font-family-body);
-}
-
-[data-theme="dark"] {
-  --bg: var(--color-background-page);
-  --panel: var(--color-background-panel);
-  --raise: var(--color-background-raised);
-  --soft: var(--color-background-soft);
-  --line: var(--color-border);
-  --line-strong: var(--color-border-strong);
-  --ink: var(--color-text);
-  --muted: var(--color-text-muted);
-  --faint: var(--color-text-faint);
-  --danger: var(--color-danger);
 }
 
 * {

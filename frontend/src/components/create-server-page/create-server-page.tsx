@@ -74,6 +74,7 @@ export function CreateServerPage() {
     "webchat",
   ]);
   const [provider, setProvider] = useState("");
+  const selectedProvider = PROVIDERS.find((item) => item.id === provider);
   const [env, setEnv] = useState<Record<string, string>>({});
   const [nodeId, setNodeId] = useState("auto");
 
@@ -127,7 +128,7 @@ export function CreateServerPage() {
       node_id: nodeId === "auto" ? null : nodeId,
       config: {
         image: os,
-        software: variant === "xcode" ? ["xcode", ...software] : [...software],
+        software: variant === "xcode" ? ["xcode", ...software] : software,
         channels: openclaw ? channels : [],
         env: entries.length > 0 ? Object.fromEntries(entries) : undefined,
       },
@@ -354,10 +355,8 @@ export function CreateServerPage() {
                         {provider !== ""
                           && keyField({
                             id: provider,
-                            label: `${PROVIDERS.find((item) => item.id === provider)?.name ?? provider} API key`,
-                            placeholder:
-                              PROVIDERS.find((item) => item.id === provider)
-                                ?.placeholder ?? "",
+                            label: `${selectedProvider?.name ?? provider} API key`,
+                            placeholder: selectedProvider?.placeholder ?? "",
                           })}
                       </div>
                     )}

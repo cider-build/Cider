@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate, useParams } from "react-router";
 import {
@@ -11,7 +11,8 @@ import {
   startServer,
   stopServer,
 } from "../../api";
-import type { Server } from "../../api";
+import type { ResourceKind, Server } from "../../api";
+import { macos } from "../../image-catalog";
 import { Button, StatusText } from "../ui";
 import {
   DetailHead,
@@ -20,22 +21,20 @@ import {
   Facts,
   Signals,
 } from "../detail";
-import { isTransitional, pollAfterAction, sandboxName } from "../ui/names";
-import { ResourceTerminal } from "../resource-terminal/resource-terminal";
-import { ResourceMetrics } from "../resource-metrics/resource-metrics";
 import {
-  age,
   bytes,
   created,
+  isTransitional,
   label,
-  macos,
+  pollAfterAction,
   required,
-  useResourceAction,
-} from "./resource-detail-page.utils";
-import type {
-  ResourceKind,
-  ResourceTab,
-} from "./resource-detail-page.utils";
+  sandboxName,
+} from "../ui/names";
+import { useResourceAction } from "../ui/actions";
+import { ResourceTerminal } from "../resource-terminal/resource-terminal";
+import { ResourceMetrics } from "../resource-metrics/resource-metrics";
+import { age } from "./resource-detail-page.utils";
+import type { ResourceTab } from "./resource-detail-page.utils";
 import styles from "./resource-detail-page.module.css";
 
 export function ResourceDetailPage({
@@ -46,7 +45,6 @@ export function ResourceDetailPage({
   tab: ResourceTab;
 }) {
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const params = useParams();
   const id = required(
     kind === "server" ? params.serverId : params.sandboxId,
@@ -71,11 +69,11 @@ export function ResourceDetailPage({
     },
   });
 
-  const start = useResourceAction(startServer, kind, id, queryClient, fired);
-  const stop = useResourceAction(stopServer, kind, id, queryClient, fired);
-  const retry = useResourceAction(retryServer, kind, id, queryClient, fired);
-  const pause = useResourceAction(pauseSandbox, kind, id, queryClient, fired);
-  const resume = useResourceAction(resumeSandbox, kind, id, queryClient, fired);
+  const start = useResourceAction(startServer, kind, id, fired);
+  const stop = useResourceAction(stopServer, kind, id, fired);
+  const retry = useResourceAction(retryServer, kind, id, fired);
+  const pause = useResourceAction(pauseSandbox, kind, id, fired);
+  const resume = useResourceAction(resumeSandbox, kind, id, fired);
 
   if (detail.status === "pending")
     return <section className={styles.state}>Loading resource</section>;

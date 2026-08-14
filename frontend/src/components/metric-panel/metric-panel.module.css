@@ -21,20 +21,19 @@
 }
 
 .metricName h2 {
-  font-size: var(--detail-section-title-size);
-  font-weight: var(--detail-section-title-weight);
+  font-size: inherit;
+  font-weight: inherit;
   margin: 0;
 }
 
 .metricHeader > strong {
   font-size: 17px;
-  font-weight: var(--detail-value-weight);
+  font-weight: inherit;
   letter-spacing: -0.02em;
 }
 
 .summary {
   color: var(--muted);
-  font-size: var(--detail-label-size);
   margin-top: 8px;
 }
 
@@ -45,5 +44,5 @@
 
 .summary strong {
   color: var(--ink);
-  font-weight: var(--detail-value-weight);
+  font-weight: inherit;
 }

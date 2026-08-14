@@ -9,9 +9,9 @@ import {
   gb,
   GIBIBYTE,
   displayGib,
-  inputGib,
   maximumMemoryGib,
   maximumStorageGib,
+  roundedGib,
   savedConfigurationError,
 } from "../node-page/node-page.utils";
 import styles from "./configuration-form.module.css";
@@ -29,21 +29,21 @@ export function ConfigurationForm({
   const persistedValues = {
     vmCount: configuration.vm_count,
     cpuCount: configuration.sandbox_cpu_count,
-    memoryGib: Number(inputGib(configuration.sandbox_memory_bytes)),
-    storageGib: Number(inputGib(configuration.sandbox_storage_bytes)),
+    memoryGib: roundedGib(configuration.sandbox_memory_bytes),
+    storageGib: roundedGib(configuration.sandbox_storage_bytes),
   };
   const initialValues = {
     vmCount: persistedValues.vmCount,
     cpuCount: Math.min(
-      configuration.sandbox_cpu_count,
+      persistedValues.cpuCount,
       Math.floor(metadata.cpu_count / configuration.vm_count),
     ),
     memoryGib: Math.min(
-      Number(inputGib(configuration.sandbox_memory_bytes)),
+      persistedValues.memoryGib,
       maximumMemoryGib(metadata, configuration.vm_count),
     ),
     storageGib: Math.min(
-      Number(inputGib(configuration.sandbox_storage_bytes)),
+      persistedValues.storageGib,
       maximumStorageGib(metadata, configuration.vm_count),
     ),
   };
@@ -62,8 +62,8 @@ export function ConfigurationForm({
       setSavedValues({
         vmCount: saved.vm_count,
         cpuCount: saved.sandbox_cpu_count,
-        memoryGib: Number(inputGib(saved.sandbox_memory_bytes)),
-        storageGib: Number(inputGib(saved.sandbox_storage_bytes)),
+        memoryGib: roundedGib(saved.sandbox_memory_bytes),
+        storageGib: roundedGib(saved.sandbox_storage_bytes),
       });
       queryClient.setQueryData(["node", node.id], updated);
       setShowSavedFeedback(true);
@@ -116,7 +116,7 @@ export function ConfigurationForm({
       || storageGib !== savedValues.storageGib;
 
   return (
-    <section className={`${styles.card} ${styles.raised}`}>
+    <section className={styles.card}>
       <h3>Sandbox configuration</h3>
       <p className={styles.desc}>
         {displayGib(metadata.storage_available_bytes)}

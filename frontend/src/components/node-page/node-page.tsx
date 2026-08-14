@@ -4,11 +4,12 @@ import { deleteNode, getNode } from "../../api";
 import { ConfigurationForm } from "../configuration-form/configuration-form";
 import { DetailHead, DetailPane, DetailSection, Facts, Signals } from "../detail";
 import { Button, StatusText } from "../ui";
-import { displayGib, requiredNodeId } from "./node-page.utils";
+import { required } from "../ui/names";
+import { displayGib } from "./node-page.utils";
 import styles from "./node-page.module.css";
 
 export function NodePage() {
-  const nodeId = requiredNodeId(useParams().nodeId);
+  const nodeId = required(useParams().nodeId, "nodeId");
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const node = useQuery({

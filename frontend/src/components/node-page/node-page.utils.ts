@@ -5,7 +5,7 @@ export const gb = new Intl.NumberFormat(undefined, {
 });
 export const GIBIBYTE = 1024 ** 3;
 
-export function gibibytes(bytes: number) {
+function gibibytes(bytes: number) {
   return bytes / GIBIBYTE;
 }
 
@@ -13,13 +13,8 @@ export function displayGib(bytes: number) {
   return `${gb.format(gibibytes(bytes))} GiB`;
 }
 
-export function inputGib(bytes: number) {
-  return String(Math.round(gibibytes(bytes) * 10) / 10);
-}
-
-export function requiredNodeId(value: string | undefined) {
-  if (value === undefined) throw new Error("node route is missing a node ID");
-  return value;
+export function roundedGib(bytes: number) {
+  return Math.round(gibibytes(bytes) * 10) / 10;
 }
 
 export function savedConfigurationError(

@@ -24,7 +24,7 @@ export function applyStoredTheme() {
 
 export function useTheme() {
   const [theme, setTheme] = useState<Theme>(
-    () => (document.documentElement.dataset.theme as Theme) ?? "light",
+    () => (document.documentElement.dataset.theme as Theme | undefined) ?? "light",
   );
 
   useEffect(() => {
