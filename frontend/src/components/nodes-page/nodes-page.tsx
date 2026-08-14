@@ -2,8 +2,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { listNodes } from "../../api";
-import type { NodeMetadata } from "../../api";
-import { Id, StatusText } from "../ui/ui";
+import { Id, StatusText } from "../ui";
 import {
   DataTable,
   PageHead,
@@ -11,14 +10,10 @@ import {
   Row,
   SearchField,
   Toolbar,
-} from "../ui/list";
-import { displayGb } from "../ui/names";
+} from "../list";
+import { memory } from "./nodes-page.utils";
 
 const PER_PAGE = 15;
-
-function memory(metadata: NodeMetadata | null) {
-  return metadata === null ? "—" : displayGb(metadata.memory_bytes);
-}
 
 export function NodesPage() {
   const navigate = useNavigate();
@@ -51,7 +46,7 @@ export function NodesPage() {
       <DataTable
         head={["ID", "Name", "Chip", "CPU", "Memory", "Connection"]}
         rows={PER_PAGE}
-        error={nodes.error === null ? null : (nodes.error as Error).message}
+        error={nodes.error === null ? null : (nodes.error).message}
         empty={
           nodes.status === "pending"
             ? "Loading nodes"
@@ -59,7 +54,12 @@ export function NodesPage() {
         }
       >
         {items.map((node) => (
-          <Row key={node.id} onOpen={() => navigate(`/nodes/${node.id}`)}>
+          <Row
+            key={node.id}
+            onOpen={() => {
+              void navigate(`/nodes/${node.id}`);
+            }}
+          >
             <td>
               <Id value={node.id} />
             </td>

@@ -1,5 +1,5 @@
 .shell {
-  background: #171717;
+  background: var(--color-terminal-background);
   height: calc(100vh - 250px);
   min-height: 500px;
   overflow: hidden;
@@ -18,7 +18,7 @@
 }
 
 .terminal :global(.xterm-viewport) {
-  scrollbar-color: #4a4a4a #171717;
+  scrollbar-color: var(--color-terminal-border) var(--color-terminal-background);
   scrollbar-width: thin;
 }
 
@@ -30,8 +30,8 @@
 
 .connection {
   align-items: center;
-  background: #171717;
-  color: #a3a3a3;
+  background: var(--color-terminal-background);
+  color: var(--color-terminal-text-muted);
   display: flex;
   font-size: 12px;
   gap: 9px;
@@ -43,7 +43,7 @@
 .connection button {
   background: transparent;
   border: 0;
-  color: #ededed;
+  color: var(--color-terminal-text);
   cursor: pointer;
   font-size: 12px;
   font-weight: 600;
@@ -54,9 +54,9 @@
 
 .spinner {
   animation: spin 800ms linear infinite;
-  border: 1px solid #4a4a4a;
+  border: 1px solid var(--color-terminal-border);
   border-radius: 50%;
-  border-top-color: #d4d4d4;
+  border-top-color: var(--color-terminal-placeholder);
   height: 13px;
   width: 13px;
 }
@@ -98,7 +98,7 @@
   margin: 8px 0 0;
 }
 
-@media (max-width: 800px) {
+@media (width <= 800px) {
   .shell {
     height: calc(100vh - 225px);
     min-height: 440px;

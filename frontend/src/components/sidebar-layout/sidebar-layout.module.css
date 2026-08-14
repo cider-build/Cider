@@ -24,42 +24,50 @@
   margin: 0 8px 8px;
   color: var(--ink);
 }
+
 .logo b {
   font-size: 21px;
   font-weight: 800;
   letter-spacing: -0.7px;
 }
+
 .logo b span {
   color: var(--orange);
 }
+
 .mark {
   position: relative;
   display: block;
   width: 30px;
   height: 22px;
 }
+
 .mark i {
   position: absolute;
   height: 5px;
   border-radius: 8px;
-  background: currentColor;
+  background: currentcolor;
 }
+
 .mark i:nth-child(1) {
   top: 0;
   left: 8px;
   width: 15px;
 }
+
 .mark i:nth-child(2) {
   top: 8px;
   left: 0;
   width: 14px;
 }
+
 .mark i:nth-child(3) {
   top: 8px;
   right: 0;
   width: 12px;
   background: var(--orange);
 }
+
 .mark i:nth-child(4) {
   bottom: 0;
   left: 8px;
@@ -77,6 +85,7 @@
   padding: 0 9px;
   color: var(--muted);
 }
+
 .search input {
   min-width: 0;
   width: 100%;
@@ -90,34 +99,17 @@
   display: grid;
   gap: 18px;
 }
+
 .nav > div {
   display: grid;
   gap: 2px;
 }
+
 .navLabel {
   padding: 0 10px 6px;
   color: var(--muted);
   font-size: 10px;
   font-weight: 600;
-}
-
-.link {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  min-height: 34px;
-  border-radius: 2px;
-  padding: 0 10px;
-  color: var(--muted);
-  font-size: 12px;
-  text-decoration: none;
-  transition:
-    background-color 160ms var(--ease),
-    color 160ms ease;
-}
-.active {
-  background: var(--soft);
-  color: var(--ink);
 }
 
 .foot {
@@ -128,50 +120,13 @@
   border-top: 1px solid var(--line);
   padding-top: 13px;
 }
+
 .foot > *:first-child {
   min-width: 0;
   flex: 1;
 }
 
-.theme {
-  display: grid;
-  place-items: center;
-  width: 28px;
-  height: 28px;
-  flex: none;
-  border: 1px solid var(--line);
-  border-radius: 2px;
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  transition:
-    background-color 160ms ease,
-    color 160ms ease,
-    border-color 160ms ease;
-}
-.theme svg {
-  width: 15px;
-  height: 15px;
-}
-.theme:focus-visible {
-  outline: 2px solid var(--orange);
-  outline-offset: 2px;
-}
-.theme:active {
-  transform: scale(0.94);
-}
-
 .main {
   min-width: 0;
   padding: 24px 28px 80px;
-}
-
-@media (hover: hover) and (pointer: fine) {
-  .link:hover {
-    color: var(--ink);
-  }
-  .theme:hover {
-    border-color: var(--muted);
-    color: var(--ink);
-  }
 }

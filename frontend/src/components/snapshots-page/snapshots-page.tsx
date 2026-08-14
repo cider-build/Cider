@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { deleteSnapshot, listSnapshots, restoreSnapshot } from "../../api";
-import { Button, Id } from "../ui/ui";
+import { Button, Id } from "../ui";
 import {
   DataTable,
   PageHead,
@@ -10,24 +10,11 @@ import {
   RowActions,
   SearchField,
   Toolbar,
-} from "../ui/list";
+} from "../list";
 import { sandboxName } from "../ui/names";
+import { created, size } from "./snapshots-page.utils";
 
 const PER_PAGE = 15;
-
-function created(value: string) {
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function size(bytes: number | null) {
-  if (bytes === null) return "—";
-  return `${(bytes / 1024 ** 3).toFixed(1)} GB`;
-}
 
 export function SnapshotsPage() {
   const queryClient = useQueryClient();
@@ -46,8 +33,8 @@ export function SnapshotsPage() {
   const restore = useMutation({ mutationFn: restoreSnapshot, ...settle });
   const remove = useMutation({ mutationFn: deleteSnapshot, ...settle });
   const pending = restore.isPending || remove.isPending;
-  const error =
-    [restore.error, remove.error, snapshots.error].find(Boolean) ?? null;
+  const error
+    = [restore.error, remove.error, snapshots.error].find(Boolean) ?? null;
 
   const all = (snapshots.data ?? []).filter(
     (snapshot) => snapshot.deleted_at === null,
@@ -78,7 +65,7 @@ export function SnapshotsPage() {
       <DataTable
         head={["ID", "Source sandbox", "Size", "Created", ""]}
         rows={PER_PAGE}
-        error={error === null ? null : (error as Error).message}
+        error={error === null ? null : (error).message}
         empty={
           snapshots.status === "pending"
             ? "Loading snapshots"

@@ -1,0 +1,138 @@
+.card {
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 20px;
+}
+
+.raised {
+  box-shadow: 3px 3px 0 0 var(--color-shadow-card);
+}
+
+.card h3 {
+  font-size: 15px;
+  margin: 0;
+}
+
+.desc {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 5px 0 0;
+}
+
+.cfgform {
+  display: grid;
+  gap: 18px;
+  margin-top: 16px;
+}
+
+.vmrow {
+  align-items: center;
+  display: flex;
+  gap: 14px;
+}
+
+.vmrow > span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.seg {
+  border: 1px solid var(--line-strong);
+  border-radius: 7px;
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  overflow: hidden;
+}
+
+.seg button {
+  background: var(--card);
+  border: 0;
+  color: var(--muted);
+  cursor: pointer;
+  font-weight: 600;
+  height: 32px;
+  transition: background 150ms var(--ease), color 150ms var(--ease);
+}
+
+.seg button + button {
+  border-left: 1px solid var(--line-strong);
+}
+
+.seg button:hover {
+  color: var(--ink);
+}
+
+.seg button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--color-text-on-accent);
+}
+
+.sliders {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.sliders label {
+  display: grid;
+  gap: 6px;
+}
+
+.slTop {
+  align-items: baseline;
+  display: flex;
+  justify-content: space-between;
+}
+
+.slTop span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.slTop output {
+  color: var(--ink);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.sliders input[type="range"] {
+  accent-color: var(--ink);
+  cursor: pointer;
+  margin: 4px 0;
+  width: 100%;
+}
+
+.slScale {
+  color: var(--muted);
+  display: flex;
+  font-size: 11px;
+  justify-content: space-between;
+}
+
+.alert {
+  background: var(--color-danger-background);
+  border: 1px solid var(--color-danger-border);
+  border-radius: 7px;
+  color: var(--color-danger);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+  padding: 10px 12px;
+  white-space: pre-wrap;
+}
+
+.cfgfoot {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+}
+
+@media (width <= 980px) {
+  .sliders {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

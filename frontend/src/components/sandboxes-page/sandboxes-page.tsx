@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -7,8 +7,7 @@ import {
   pauseSandbox,
   resumeSandbox,
 } from "../../api";
-import type { Sandbox } from "../../api";
-import { Button, Id, StatusText } from "../ui/ui";
+import { Button, Id, StatusText } from "../ui";
 import {
   DataTable,
   PageHead,
@@ -18,45 +17,21 @@ import {
   SearchField,
   StatusFilter,
   Toolbar,
-} from "../ui/list";
+} from "../list";
 import {
   isTransitional,
   pollWhileTransitional,
   sandboxName,
 } from "../ui/names";
+import type { Sandbox } from "../../api";
+import {
+  created,
+  label,
+  useSandboxAction,
+} from "./sandboxes-page.utils";
 
 const PER_PAGE = 15;
 const STATUSES = ["All", "Active", "Paused", "Stopped"];
-
-function created(value: string) {
-  return new Date(value).toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-}
-
-function label(status: string) {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
-function useSandboxAction(fn: (id: string) => Promise<unknown>) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: fn,
-    onSuccess: (updated) => {
-      const sandbox = updated as Sandbox | undefined;
-      if (sandbox?.id === undefined) return;
-      queryClient.setQueryData<Sandbox[]>(["sandboxes"], (current) =>
-        current?.map((item) => (item.id === sandbox.id ? sandbox : item)),
-      );
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["sandboxes"] });
-    },
-  });
-}
 
 export function SandboxesPage() {
   const navigate = useNavigate();
@@ -72,20 +47,20 @@ export function SandboxesPage() {
   const resume = useSandboxAction(resumeSandbox);
   const remove = useSandboxAction(deleteSandbox);
   const pending = pause.isPending || resume.isPending || remove.isPending;
-  const error =
-    [pause.error, resume.error, remove.error, sandboxes.error].find(Boolean) ??
-    null;
+  const error
+    = [pause.error, resume.error, remove.error, sandboxes.error].find(Boolean)
+      ?? null;
 
   const all = (sandboxes.data ?? []).filter(
     (sandbox) => sandbox.deleted_at === null,
   );
   const needle = query.trim().toLowerCase();
   const matches = all.filter((sandbox) => {
-    const haystack =
-      `${sandboxName(sandbox.id)} ${sandbox.node_name}`.toLowerCase();
+    const haystack
+      = `${sandboxName(sandbox.id)} ${sandbox.node_name}`.toLowerCase();
     return (
-      haystack.includes(needle) &&
-      (status === "All" || label(sandbox.status) === status)
+      haystack.includes(needle)
+      && (status === "All" || label(sandbox.status) === status)
     );
   });
   const pages = Math.max(1, Math.ceil(matches.length / PER_PAGE));
@@ -98,23 +73,25 @@ export function SandboxesPage() {
     const moving = isTransitional(sandbox.status);
     return (
       <RowActions>
-        {sandbox.status === "paused" ? (
-          <Button
-            disabled={pending || moving}
-            loading={working(resume)}
-            onClick={() => resume.mutate(sandbox.id)}
-          >
-            Resume
-          </Button>
-        ) : (
-          <Button
-            disabled={pending || moving || sandbox.status !== "active"}
-            loading={working(pause)}
-            onClick={() => pause.mutate(sandbox.id)}
-          >
-            Pause
-          </Button>
-        )}
+        {sandbox.status === "paused"
+          ? (
+              <Button
+                disabled={pending || moving}
+                loading={working(resume)}
+                onClick={() => resume.mutate(sandbox.id)}
+              >
+                Resume
+              </Button>
+            )
+          : (
+              <Button
+                disabled={pending || moving || sandbox.status !== "active"}
+                loading={working(pause)}
+                onClick={() => pause.mutate(sandbox.id)}
+              >
+                Pause
+              </Button>
+            )}
         <Button
           disabled={pending}
           loading={working(remove)}
@@ -157,7 +134,7 @@ export function SandboxesPage() {
       <DataTable
         head={["Sandbox", "Node", "Created", "State", ""]}
         rows={PER_PAGE}
-        error={error === null ? null : (error as Error).message}
+        error={error === null ? null : (error).message}
         empty={
           sandboxes.status === "pending"
             ? "Loading sandboxes"
@@ -167,7 +144,9 @@ export function SandboxesPage() {
         {slice.map((sandbox) => (
           <Row
             key={sandbox.id}
-            onOpen={() => navigate(`/sandboxes/${sandbox.id}`)}
+            onOpen={() => {
+              void navigate(`/sandboxes/${sandbox.id}`);
+            }}
           >
             <td>
               <b>

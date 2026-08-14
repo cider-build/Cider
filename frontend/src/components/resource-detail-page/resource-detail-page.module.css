@@ -24,6 +24,7 @@
   --detail-page-title-weight: 700;
   --detail-section-title-weight: 600;
   --detail-value-weight: 500;
+
   display: flex;
   flex-direction: column;
   font-family: var(--detail-font-family);
@@ -39,7 +40,8 @@
 }
 
 .chromeInner {
-  padding: var(--detail-header-top) var(--detail-header-x)
+  padding:
+    var(--detail-header-top) var(--detail-header-x)
     var(--detail-header-bottom);
   width: 100%;
 }
@@ -131,9 +133,10 @@
 }
 
 .content {
-  background: #f8f8f8;
+  background: var(--color-chart-surface);
   min-width: 0;
-  padding: var(--detail-content-top) var(--detail-content-x)
+  padding:
+    var(--detail-content-top) var(--detail-content-x)
     var(--detail-content-bottom);
 }
 
@@ -145,7 +148,7 @@
 }
 
 .allocationBand {
-  background: #f8f8f8;
+  background: var(--color-chart-surface);
   border: 1px solid var(--line-strong);
   border-radius: 12px;
   display: grid;
@@ -303,24 +306,28 @@
 }
 
 .error {
-  color: #b42318;
+  color: var(--color-danger);
 }
 
-@media (max-width: 800px) {
+@media (width <= 800px) {
   .layout {
     grid-template-columns: 140px minmax(0, 1fr);
   }
+
   .content {
     padding-left: 24px;
     padding-right: 24px;
   }
+
   .allocationBand {
     grid-template-columns: 1fr;
   }
+
   .allocationStat {
     border-left: 0;
     border-top: 1px solid var(--line-strong);
   }
+
   .allocationStat:first-child {
     border-top: 0;
   }

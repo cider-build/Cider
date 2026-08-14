@@ -23,42 +23,50 @@
   margin-bottom: 4px;
   color: var(--ink);
 }
+
 .logo b {
   font-size: 21px;
   font-weight: 800;
   letter-spacing: -0.7px;
 }
+
 .logo b span {
   color: var(--orange);
 }
+
 .mark {
   position: relative;
   display: block;
   width: 30px;
   height: 22px;
 }
+
 .mark i {
   position: absolute;
   height: 5px;
   border-radius: 8px;
-  background: currentColor;
+  background: currentcolor;
 }
+
 .mark i:nth-child(1) {
   top: 0;
   left: 8px;
   width: 15px;
 }
+
 .mark i:nth-child(2) {
   top: 8px;
   left: 0;
   width: 14px;
 }
+
 .mark i:nth-child(3) {
   top: 8px;
   right: 0;
   width: 12px;
   background: var(--orange);
 }
+
 .mark i:nth-child(4) {
   bottom: 0;
   left: 8px;
@@ -72,6 +80,7 @@
   border-bottom: 1px solid var(--line);
   margin-bottom: 4px;
 }
+
 .tabs button {
   height: 32px;
   border: 0;
@@ -82,6 +91,7 @@
   cursor: pointer;
   transition: color 160ms ease;
 }
+
 .tabs button[aria-current] {
   color: var(--ink);
   font-weight: 700;
@@ -91,9 +101,11 @@
   display: grid;
   gap: 4px;
 }
+
 .field > span {
   color: var(--muted);
 }
+
 .input {
   width: 100%;
   min-height: 31px;
@@ -104,6 +116,7 @@
   color: var(--ink);
   outline: 0;
 }
+
 .input:focus-visible {
   border-color: var(--orange);
 }

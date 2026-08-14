@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import {
@@ -8,9 +8,8 @@ import {
   startServer,
   stopServer,
 } from "../../api";
-import type { Server, ServerConfig } from "../../api";
-import { OS_RELEASES } from "../../image-catalog";
-import { Button, Id, StatusText } from "../ui/ui";
+import type { Server } from "../../api";
+import { Button, Id, StatusText } from "../ui";
 import {
   DataTable,
   PageHead,
@@ -20,55 +19,22 @@ import {
   SearchField,
   StatusFilter,
   Toolbar,
-} from "../ui/list";
+} from "../list";
 import {
   isTransitional,
   pollAfterAction,
   pollWhileTransitional,
 } from "../ui/names";
+import {
+  created,
+  label,
+  macos,
+  useServerAction,
+} from "./servers-page.utils";
 import styles from "./servers-page.module.css";
-
-function useServerAction(
-  fn: (id: string) => Promise<unknown>,
-  onFired: () => void,
-) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    onMutate: onFired,
-    mutationFn: fn,
-    onSuccess: (updated) => {
-      const server = updated as Server | undefined;
-      if (server?.id === undefined) return;
-      queryClient.setQueryData<Server[]>(["servers"], (current) =>
-        current?.map((item) => (item.id === server.id ? server : item)),
-      );
-    },
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["servers"] });
-    },
-  });
-}
 
 const PER_PAGE = 15;
 const STATUSES = ["All", "Running", "Stopped", "Provisioning", "Failed"];
-
-function created(value: string) {
-  return new Date(value).toLocaleDateString([], {
-    month: "short",
-    day: "numeric",
-  });
-}
-
-function macos(config: ServerConfig | null) {
-  if (config === null) return "—";
-  const release = OS_RELEASES.find((item) => item.id === config.image);
-  return release ? `${release.version} ${release.name}` : config.image;
-}
-
-function label(status: string) {
-  return status.charAt(0).toUpperCase() + status.slice(1);
-}
-
 export function ServersPage() {
   const navigate = useNavigate();
   const [query, setQuery] = useState("");
@@ -89,10 +55,10 @@ export function ServersPage() {
   const stop = useServerAction(stopServer, fired);
   const retry = useServerAction(retryServer, fired);
   const remove = useServerAction(deleteServer, fired);
-  const pending =
-    start.isPending || stop.isPending || retry.isPending || remove.isPending;
-  const error =
-    [start.error, stop.error, retry.error, remove.error, servers.error].find(
+  const pending
+    = start.isPending || stop.isPending || retry.isPending || remove.isPending;
+  const error
+    = [start.error, stop.error, retry.error, remove.error, servers.error].find(
       Boolean,
     ) ?? null;
 
@@ -101,11 +67,11 @@ export function ServersPage() {
   );
   const needle = query.trim().toLowerCase();
   const matches = all.filter((server) => {
-    const haystack =
-      `${server.name} ${server.node_name} ${macos(server.config)}`.toLowerCase();
+    const haystack
+      = `${server.name} ${server.node_name} ${macos(server.config)}`.toLowerCase();
     return (
-      haystack.includes(needle) &&
-      (status === "All" || label(server.status) === status)
+      haystack.includes(needle)
+      && (status === "All" || label(server.status) === status)
     );
   });
   const pages = Math.max(1, Math.ceil(matches.length / PER_PAGE));
@@ -127,23 +93,25 @@ export function ServersPage() {
             Retry
           </Button>
         )}
-        {server.status === "running" ? (
-          <Button
-            disabled={pending || moving}
-            loading={working(stop)}
-            onClick={() => stop.mutate(server.id)}
-          >
-            Stop
-          </Button>
-        ) : (
-          <Button
-            disabled={pending || moving || server.status !== "stopped"}
-            loading={working(start)}
-            onClick={() => start.mutate(server.id)}
-          >
-            Start
-          </Button>
-        )}
+        {server.status === "running"
+          ? (
+              <Button
+                disabled={pending || moving}
+                loading={working(stop)}
+                onClick={() => stop.mutate(server.id)}
+              >
+                Stop
+              </Button>
+            )
+          : (
+              <Button
+                disabled={pending || moving || server.status !== "stopped"}
+                loading={working(start)}
+                onClick={() => start.mutate(server.id)}
+              >
+                Start
+              </Button>
+            )}
         <Button
           disabled={pending}
           loading={working(remove)}
@@ -182,14 +150,19 @@ export function ServersPage() {
             setPage(0);
           }}
         />
-        <Button kind="primary" onClick={() => navigate("/servers/new")}>
+        <Button
+          kind="primary"
+          onClick={() => {
+            void navigate("/servers/new");
+          }}
+        >
           Add server
         </Button>
       </Toolbar>
       <DataTable
         head={["ID", "Name", "Node", "macOS", "Created", "State", ""]}
         rows={PER_PAGE}
-        error={error === null ? null : (error as Error).message}
+        error={error === null ? null : (error).message}
         empty={
           servers.status === "pending"
             ? "Loading servers"
@@ -197,7 +170,12 @@ export function ServersPage() {
         }
       >
         {slice.map((server) => (
-          <Row key={server.id} onOpen={() => navigate(`/servers/${server.id}`)}>
+          <Row
+            key={server.id}
+            onOpen={() => {
+              void navigate(`/servers/${server.id}`);
+            }}
+          >
             <td>
               <Id value={server.id} />
             </td>

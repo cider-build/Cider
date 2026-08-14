@@ -89,6 +89,24 @@ export type Snapshot = {
 
 type RequestOptions = { method?: string; json?: unknown };
 
+async function responseBody<T>(response: Response): Promise<T> {
+  const body: unknown = await response.json();
+  return body as T;
+}
+
+async function responseError(response: Response): Promise<Error> {
+  const body: unknown = await response.json();
+  if (
+    typeof body !== "object"
+    || body === null
+    || !("detail" in body)
+    || typeof body.detail !== "string"
+  ) {
+    throw new TypeError("The API error response must contain a detail string.");
+  }
+  return new Error(body.detail);
+}
+
 async function request<T>(
   path: string,
   options: RequestOptions = {},
@@ -103,10 +121,11 @@ async function request<T>(
     body: options.json === undefined ? undefined : JSON.stringify(options.json),
   });
   if (!response.ok) {
-    const body: { detail: string } = await response.json();
-    throw new Error(body.detail);
+    throw await responseError(response);
   }
-  return response.status === 204 ? (undefined as T) : response.json();
+  return response.status === 204
+    ? (undefined as T)
+    : responseBody<T>(response);
 }
 
 export async function me(): Promise<AuthOut | null> {
@@ -115,10 +134,9 @@ export async function me(): Promise<AuthOut | null> {
   });
   if (response.status === 401) return null;
   if (!response.ok) {
-    const body: { detail: string } = await response.json();
-    throw new Error(body.detail);
+    throw await responseError(response);
   }
-  return response.json();
+  return responseBody<AuthOut>(response);
 }
 
 export const signup = (body: SignupInput) =>

@@ -2,7 +2,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { useNavigate } from "react-router";
 import { createServer, listAllNodes } from "../../api";
-import type { Node as CiderNode } from "../../api";
 import {
   APPLE_LOGO,
   OPENCLAW_CHANNELS,
@@ -17,7 +16,8 @@ import type {
   SoftwareId,
   VariantId,
 } from "../../image-catalog";
-import { Button, Dropdown } from "../ui/ui";
+import { Button, Dropdown } from "../ui";
+import { nodeLabel, toggled } from "./create-server-page.utils";
 import styles from "./create-server-page.module.css";
 
 const PROVIDERS = [
@@ -36,7 +36,7 @@ const SOFTWARE_KEY: Partial<
     label: "Anthropic API key",
     placeholder: "sk-ant-…",
   },
-  codex: { id: "OPENAI_API_KEY", label: "OpenAI API key", placeholder: "sk-…" },
+  "codex": { id: "OPENAI_API_KEY", label: "OpenAI API key", placeholder: "sk-…" },
 };
 
 const CHANNEL_KEY: Partial<
@@ -62,16 +62,6 @@ const CHANNEL_KEY: Partial<
   ],
 };
 
-function toggled<T>(values: T[], value: T): T[] {
-  return values.includes(value)
-    ? values.filter((item) => item !== value)
-    : [...values, value];
-}
-
-function nodeLabel(node: CiderNode) {
-  return node.metadata ? `${node.name}, ${node.metadata.chip}` : node.name;
-}
-
 export function CreateServerPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -95,7 +85,7 @@ export function CreateServerPage() {
     mutationFn: createServer,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["servers"] });
-      navigate("/servers");
+      await navigate("/servers");
     },
   });
 
@@ -114,7 +104,7 @@ export function CreateServerPage() {
 
   function activeKeys(): string[] {
     const fromSoftware = software.flatMap((id) =>
-      SOFTWARE_KEY[id] ? [SOFTWARE_KEY[id]!.id] : [],
+      SOFTWARE_KEY[id] ? [SOFTWARE_KEY[id].id] : [],
     );
     const fromChannels = openclaw
       ? channels.flatMap((id) => (CHANNEL_KEY[id] ?? []).map((key) => key.id))
@@ -153,8 +143,7 @@ export function CreateServerPage() {
           type="password"
           value={env[key.id] ?? ""}
           onChange={(event) =>
-            setEnv((current) => ({ ...current, [key.id]: event.target.value }))
-          }
+            setEnv((current) => ({ ...current, [key.id]: event.target.value }))}
           placeholder={key.placeholder}
           autoComplete="new-password"
           spellCheck={false}
@@ -190,7 +179,12 @@ export function CreateServerPage() {
   return (
     <section className={styles.page}>
       <header className={styles.head}>
-        <Button kind="quiet" onClick={() => navigate("/servers")}>
+        <Button
+          kind="quiet"
+          onClick={() => {
+            void navigate("/servers");
+          }}
+        >
           ← Servers
         </Button>
         <h1>New server</h1>
@@ -235,7 +229,9 @@ export function CreateServerPage() {
                   </span>
                   <b>{item.version}</b>
                   <span>
-                    {item.name}, {item.year}
+                    {item.name}
+                    ,
+                    {item.year}
                   </span>
                 </button>
               ))}
@@ -283,8 +279,7 @@ export function CreateServerPage() {
                       aria-pressed={selected}
                       className={styles.row}
                       onClick={() =>
-                        setSoftware((current) => toggled(current, item.id))
-                      }
+                        setSoftware((current) => toggled(current, item.id))}
                     >
                       <span className={styles.rowIcon}>
                         {item.logo ? <img src={item.logo} alt="" /> : "🦞"}
@@ -325,12 +320,13 @@ export function CreateServerPage() {
                                   onClick={() =>
                                     setChannels((current) =>
                                       toggled(current, channel.id),
-                                    )
-                                  }
+                                    )}
                                 >
-                                  {channel.logo ? (
-                                    <img src={channel.logo} alt="" />
-                                  ) : null}
+                                  {channel.logo
+                                    ? (
+                                        <img src={channel.logo} alt="" />
+                                      )
+                                    : null}
                                   {channel.name}
                                 </button>
                                 {on && keys.length > 0 && (
@@ -355,8 +351,8 @@ export function CreateServerPage() {
                           ]}
                           width={240}
                         />
-                        {provider !== "" &&
-                          keyField({
+                        {provider !== ""
+                          && keyField({
                             id: provider,
                             label: `${PROVIDERS.find((item) => item.id === provider)?.name ?? provider} API key`,
                             placeholder:

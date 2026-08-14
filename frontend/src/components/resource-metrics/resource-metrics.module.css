@@ -1,0 +1,89 @@
+.metricsPage {
+  display: grid;
+  gap: 18px;
+  padding-top: 16px;
+}
+
+.pageHeader {
+  align-items: center;
+  display: flex;
+}
+
+.windowPicker {
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  display: flex;
+  padding: 2px;
+}
+
+.windowPicker button {
+  background: transparent;
+  border: 0;
+  border-radius: calc(var(--control-radius) - 1px);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--detail-label-size);
+  font-weight: var(--detail-body-weight);
+  min-height: 23px;
+  padding: 0 10px;
+  transition:
+    background-color 150ms var(--ease),
+    color 150ms var(--ease),
+    transform 150ms var(--ease);
+}
+
+.windowPicker button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.windowPicker button:active {
+  transform: scale(0.97);
+}
+
+.metricsGrid {
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  overflow: hidden;
+}
+
+.metricsGrid > * + * {
+  border-left: 1px solid var(--line-strong);
+}
+
+.state {
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  color: var(--muted);
+  display: flex;
+  justify-content: center;
+  min-height: 280px;
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+@media (width <= 900px) {
+  .metricsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .metricsGrid > * + * {
+    border-left: 0;
+    border-top: 1px solid var(--line-strong);
+  }
+}
+
+@media (width <= 700px) {
+  .pageHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+}

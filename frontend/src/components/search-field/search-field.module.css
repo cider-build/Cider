@@ -1,0 +1,21 @@
+.search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 268px;
+  height: var(--control-height);
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  padding: 0 9px;
+  color: var(--muted);
+}
+
+.search input {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  outline: 0;
+}

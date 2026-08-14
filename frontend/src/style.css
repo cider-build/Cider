@@ -1,46 +1,36 @@
 @import url("https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap");
+@import url("./styles/tokens.css");
 
 :root,
 [data-theme="light"] {
-  --bg: #f6f6f2;
-  --panel: #ffffff;
-  --raise: #faf9f5;
-  --soft: #ecece5;
-  --line: #d9d9d0;
-  --ink: #1d1e1b;
-  --muted: #74766d;
-
-  /* Legacy token names. */
-  --card: var(--panel);
-  --faint: #a3a3a3;
-  --line-strong: #c9c9c0;
-
-  --orange: #ff8200;
-  --orange-deep: #b76900;
-  --danger: #b42318;
-  --ease: cubic-bezier(0.23, 1, 0.32, 1);
-  --app-font-family:
-    Montserrat, ui-sans-serif, system-ui, -apple-system, sans-serif;
-
-  color-scheme: light;
+  --bg: var(--color-background-page);
+  --panel: var(--color-background-panel);
+  --raise: var(--color-background-raised);
+  --soft: var(--color-background-soft);
+  --line: var(--color-border);
+  --line-strong: var(--color-border-strong);
+  --ink: var(--color-text);
+  --muted: var(--color-text-muted);
+  --faint: var(--color-text-faint);
+  --card: var(--color-background-panel);
+  --orange: var(--color-accent);
+  --orange-deep: var(--color-accent-shadow);
+  --danger: var(--color-danger);
+  --ease: var(--ease-standard);
+  --app-font-family: var(--font-family-body);
 }
 
 [data-theme="dark"] {
-  --bg: #0e0e0d;
-  --panel: #141412;
-  --raise: #191916;
-  --soft: #1e1e1a;
-  --line: #282823;
-  --ink: #e7e7df;
-  --muted: #8d8d83;
-
-  --card: var(--panel);
-  --faint: #6d6d64;
-  --line-strong: #37372f;
-
-  --danger: #d4645a;
-
-  color-scheme: dark;
+  --bg: var(--color-background-page);
+  --panel: var(--color-background-panel);
+  --raise: var(--color-background-raised);
+  --soft: var(--color-background-soft);
+  --line: var(--color-border);
+  --line-strong: var(--color-border-strong);
+  --ink: var(--color-text);
+  --muted: var(--color-text-muted);
+  --faint: var(--color-text-faint);
+  --danger: var(--color-danger);
 }
 
 * {
@@ -69,7 +59,7 @@ textarea {
 }
 
 code {
-  font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--font-family-code);
   font-size: 11px;
 }
 

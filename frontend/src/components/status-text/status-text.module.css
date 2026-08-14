@@ -1,0 +1,16 @@
+.status {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.status[data-status="stopped"],
+.status[data-status="offline"] {
+  color: var(--color-status-stopped);
+}
+
+.status[data-status="provisioning"],
+.status[data-status="expiring"] {
+  color: var(--color-status-progress);
+}

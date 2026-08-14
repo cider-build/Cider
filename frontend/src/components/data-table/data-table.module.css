@@ -1,0 +1,43 @@
+.tableWrap {
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  white-space: nowrap;
+}
+
+.table th {
+  height: 28px;
+  border-bottom: 1px solid var(--line);
+  padding: 0 var(--space-5);
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 600;
+  text-align: left;
+}
+
+.table td {
+  height: 33px;
+  border-bottom: 1px solid var(--soft);
+  padding: 0 var(--space-5);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.empty {
+  margin: 0;
+  padding: 26px var(--space-6);
+  color: var(--muted);
+}
+
+.error {
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  padding: 9px var(--space-6);
+  color: var(--danger);
+}

@@ -1,0 +1,13 @@
+.sparkline {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.gridLine {
+  fill: none;
+  stroke: currentcolor;
+  stroke-opacity: 0.1;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}

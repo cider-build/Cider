@@ -34,7 +34,7 @@ export function ResourceTerminal({
       cursorBlink: true,
       cursorStyle: "bar",
       fontFamily:
-        '"SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace',
+        "\"SFMono-Regular\", Consolas, \"Liberation Mono\", Menlo, monospace",
       fontSize: 13,
       fontWeight: "400",
       fontWeightBold: "600",
@@ -170,22 +170,24 @@ export function ResourceTerminal({
       <div className={styles.terminal} ref={hostRef} />
       {connection !== "connected" && (
         <div className={styles.connection} aria-live="polite">
-          {connection === "connecting" ? (
-            <>
-              <span className={styles.spinner} aria-hidden="true" />
-              <span>Connecting…</span>
-            </>
-          ) : (
-            <>
-              <span>Not connected</span>
-              <button
-                type="button"
-                onClick={() => setSession((value) => value + 1)}
-              >
-                Reconnect
-              </button>
-            </>
-          )}
+          {connection === "connecting"
+            ? (
+                <>
+                  <span className={styles.spinner} aria-hidden="true" />
+                  <span>Connecting…</span>
+                </>
+              )
+            : (
+                <>
+                  <span>Not connected</span>
+                  <button
+                    type="button"
+                    onClick={() => setSession((value) => value + 1)}
+                  >
+                    Reconnect
+                  </button>
+                </>
+              )}
         </div>
       )}
     </section>

@@ -1,0 +1,29 @@
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--duration-fast) ease;
+}
+
+.link svg {
+  width: 12px;
+  height: 12px;
+  flex: none;
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .link:hover {
+    color: var(--ink);
+  }
+}

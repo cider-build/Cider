@@ -1,0 +1,136 @@
+:root {
+  --control-height: 27px;
+  --control-padding: var(--space-5);
+  --control-radius: var(--radius-control);
+  --control-fill: var(--panel);
+  --control-hover-fill: var(--panel);
+  --control-line: var(--line);
+  --control-hover-line: color-mix(in srgb, var(--ink) 28%, transparent);
+}
+
+[data-theme="dark"] {
+  --control-fill: color-mix(in srgb, var(--ink) 9%, transparent);
+  --control-hover-fill: color-mix(in srgb, var(--ink) 15%, transparent);
+  --control-line: color-mix(in srgb, var(--ink) 22%, transparent);
+  --control-hover-line: color-mix(in srgb, var(--ink) 32%, transparent);
+}
+
+.button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: var(--control-height);
+  border: 1px solid var(--control-line);
+  border-radius: var(--control-radius);
+  background: var(--control-fill);
+  padding: 0 var(--control-padding);
+  color: var(--ink);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    transform var(--duration-control) var(--ease),
+    background-color var(--duration-control) ease,
+    border-color var(--duration-control) ease,
+    color var(--duration-control) ease;
+}
+
+.button[data-block] {
+  width: 100%;
+}
+
+.button:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: 2px;
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+.button[data-kind="primary"] {
+  border-color: var(--orange);
+  background: var(--orange);
+  color: var(--color-text-on-accent);
+  font-weight: 600;
+}
+
+.button[data-kind="quiet"] {
+  border-color: transparent;
+  background: transparent;
+  color: var(--muted);
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.button[data-loading] {
+  position: relative;
+  color: transparent;
+}
+
+.button[data-loading]:disabled {
+  opacity: 1;
+}
+
+.spinner {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  color: var(--muted);
+  animation: spin 700ms linear infinite;
+}
+
+.button[data-kind="primary"] .spinner {
+  color: var(--color-text-on-accent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .button:hover {
+    border-color: var(--control-hover-line);
+    background: var(--control-hover-fill);
+  }
+
+  .button[data-kind="primary"]:hover {
+    border-color: var(--color-accent-hover);
+    background: var(--color-accent-hover);
+  }
+
+  .button[data-kind="quiet"]:hover {
+    border-color: transparent;
+    background: color-mix(in srgb, var(--ink) 7%, transparent);
+    color: var(--ink);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button {
+    transition:
+      background-color var(--duration-control) ease,
+      border-color var(--duration-control) ease,
+      color var(--duration-control) ease;
+  }
+
+  .button:active {
+    transform: none;
+  }
+
+  .spinner {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+  }
+}

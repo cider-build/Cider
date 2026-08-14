@@ -5,6 +5,11 @@ rounds; the shipped console follows them. Do not regress them.
 
 ## Tokens
 
+- Define shared tokens in `src/styles/tokens.css`.
+- Use a token before a literal value.
+- Define all color values in the token file. Stylelint rejects color literals elsewhere.
+- Use a space token when the required value exists.
+- Use a literal size only for unique component geometry.
 - Font: Montserrat, weights 400–800.
 - Ink `#171717`, muted `#737373`, faint `#a3a3a3`, hairline `#ececec`,
   page background `#fafafa`, card `#ffffff`.
@@ -13,6 +18,15 @@ rounds; the shipped console follows them. Do not regress them.
 - Motion: 120–200ms, `cubic-bezier(0.23, 1, 0.32, 1)`. Animate transform,
   opacity, and color only. No entrance animations, nothing decorative.
 - Destructive: red `#b42318` appears only on hover of a danger control.
+
+## Component files
+
+- Put each component in `components/component-name`.
+- Name its code file `component-name.tsx`.
+- Name its style file `component-name.module.css`.
+- Keep one top-level function in each TSX file.
+- Put non-rendering helper functions in a `.utils.ts` file.
+- Run `npm run lint` before each frontend change.
 
 ## Copy
 

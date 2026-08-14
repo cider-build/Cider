@@ -1,0 +1,40 @@
+.signals {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.signal {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  border-right: 1px solid var(--soft);
+  padding: var(--space-9);
+}
+
+.signal:first-child {
+  padding-left: 0;
+}
+
+.signal:last-child {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.signal b {
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.4px;
+  white-space: nowrap;
+}
+
+.signal span {
+  color: var(--muted);
+}
+
+.chart {
+  height: 26px;
+  margin-top: 9px;
+  color: var(--muted);
+}

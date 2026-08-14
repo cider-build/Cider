@@ -1,0 +1,82 @@
+:root,
+[data-theme="light"] {
+  --color-background-page: #f6f6f2;
+  --color-background-panel: #fff;
+  --color-background-raised: #faf9f5;
+  --color-background-soft: #ecece5;
+  --color-border: #d9d9d0;
+  --color-border-strong: #c9c9c0;
+  --color-text: #1d1e1b;
+  --color-text-on-accent: #fff;
+  --color-text-muted: #74766d;
+  --color-text-faint: #a3a3a3;
+  --color-accent: #ff8200;
+  --color-accent-hover: #ff9526;
+  --color-accent-shadow: #b76900;
+  --color-danger: #b42318;
+  --color-danger-background: #fff3f2;
+  --color-danger-border: #f1b8b2;
+  --color-danger-border-hover: #e2aaa4;
+  --color-status-stopped: #8d3f37;
+  --color-status-progress: #9a5a16;
+  --color-terminal-background: #171717;
+  --color-terminal-border: #4a4a4a;
+  --color-terminal-text: #ededed;
+  --color-terminal-text-muted: #a3a3a3;
+  --color-terminal-placeholder: #d4d4d4;
+  --color-chart-surface: #f8f8f8;
+  --color-chart-label: #bdbdbd;
+  --color-shadow-card: #eaeaea;
+  --color-border-hairline: #ececec;
+  --color-shadow-menu: rgb(0 0 0 / 16%);
+  --font-family-body:
+    montserrat,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
+  --font-family-code:
+    "IBM Plex Mono",
+    ui-monospace,
+    sfmono-regular,
+    menlo,
+    monospace;
+  --duration-fast: 140ms;
+  --duration-control: 160ms;
+  --duration-slow: 200ms;
+  --ease-standard: cubic-bezier(0.23, 1, 0.32, 1);
+  --space-1: 2px;
+  --space-2: 4px;
+  --space-3: 6px;
+  --space-4: 8px;
+  --space-5: 10px;
+  --space-6: 12px;
+  --space-7: 14px;
+  --space-8: 16px;
+  --space-9: 18px;
+  --space-10: 20px;
+  --space-12: 24px;
+  --space-14: 28px;
+  --space-16: 32px;
+  --radius-control: 2px;
+  --radius-medium: 7px;
+  --radius-large: 12px;
+  --shadow-primary: 3px 3px 0 var(--color-accent-shadow);
+
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --color-background-page: #0e0e0d;
+  --color-background-panel: #141412;
+  --color-background-raised: #191916;
+  --color-background-soft: #1e1e1a;
+  --color-border: #282823;
+  --color-border-strong: #37372f;
+  --color-text: #e7e7df;
+  --color-text-muted: #8d8d83;
+  --color-text-faint: #6d6d64;
+  --color-danger: #d4645a;
+
+  color-scheme: dark;
+}

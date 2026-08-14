@@ -1,0 +1,125 @@
+.chartFrame {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  margin-top: 18px;
+  row-gap: 7px;
+}
+
+.plot {
+  height: 176px;
+  min-width: 0;
+  position: relative;
+}
+
+.chart {
+  color: var(--orange);
+  cursor: crosshair;
+  display: block;
+  height: 176px;
+  overflow: visible;
+  touch-action: none;
+  width: 100%;
+}
+
+.yAxis {
+  color: var(--muted);
+  display: flex;
+  flex-direction: column;
+  font-size: 9px;
+  height: 152px;
+  justify-content: space-between;
+  padding: 12px 7px 0 0;
+  text-align: right;
+}
+
+.xAxis {
+  color: var(--muted);
+  display: flex;
+  font-size: 9px;
+  justify-content: space-between;
+}
+
+.xAxis span:nth-child(2) {
+  text-align: center;
+}
+
+.xAxis span:last-child {
+  text-align: right;
+}
+
+.gridLines line {
+  stroke: var(--line);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.axisLines line {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.chartArea {
+  fill: currentcolor;
+  opacity: 0.08;
+}
+
+.chartLine {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.hoverLine {
+  stroke: var(--muted);
+  stroke-dasharray: 2 3;
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.hoverPoint {
+  fill: var(--color-chart-surface);
+  stroke: currentcolor;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.tooltip {
+  background: var(--ink);
+  border-radius: 6px;
+  color: var(--bg);
+  display: grid;
+  font-size: 10px;
+  gap: 2px;
+  min-width: max-content;
+  padding: 7px 8px;
+  pointer-events: none;
+  position: absolute;
+  transform: translate(9px, -50%);
+  z-index: 2;
+}
+
+.tooltip[data-side="left"] {
+  transform: translate(calc(-100% - 9px), -50%);
+}
+
+.tooltip strong {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.tooltip span {
+  color: var(--color-chart-label);
+}
+
+.emptyChart {
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  display: flex;
+  height: 206px;
+  justify-content: center;
+}

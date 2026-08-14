@@ -1,0 +1,28 @@
+.tabs {
+  display: flex;
+  gap: 15px;
+  height: 35px;
+  border-bottom: 1px solid var(--line);
+}
+
+.tabs button {
+  height: 34px;
+  border: 0;
+  background: transparent;
+  padding: 0 var(--space-1);
+  color: var(--muted);
+  font-weight: 500;
+  cursor: pointer;
+  transition: color var(--duration-control) ease;
+}
+
+.tabs button[aria-current] {
+  color: var(--ink);
+  font-weight: 700;
+}
+
+.tabs button:disabled {
+  color: var(--muted);
+  cursor: default;
+  opacity: 0.45;
+}

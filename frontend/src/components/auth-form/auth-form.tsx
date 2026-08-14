@@ -1,9 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import type { FormEvent } from "react";
+import type { SyntheticEvent } from "react";
 import { login, signup } from "../../api";
 import type { AuthOut } from "../../api";
-import { Button } from "../ui/ui";
+import { Button } from "../ui";
 import styles from "./auth-form.module.css";
 
 type Mode = "login" | "signup";
@@ -26,7 +26,7 @@ export function AuthForm() {
   const pending = loginMutation.isPending || signupMutation.isPending;
   const error = loginMutation.error ?? signupMutation.error;
 
-  function submit(event: FormEvent) {
+  function submit(event: SyntheticEvent<HTMLFormElement>) {
     event.preventDefault();
     if (mode === "signup")
       signupMutation.mutate({
@@ -48,7 +48,8 @@ export function AuthForm() {
             <i />
           </span>
           <b>
-            cider<span>.</span>
+            cider
+            <span>.</span>
           </b>
         </span>
 
