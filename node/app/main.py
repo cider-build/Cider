@@ -250,8 +250,21 @@ async def websocket_to_pty(websocket: WebSocket, master: int) -> None:
 async def pty_to_websocket(master: int, websocket: WebSocket) -> None:
     loop = asyncio.get_running_loop()
     while True:
+        readable = loop.create_future()
+
+        def ready() -> None:
+            if not readable.done():
+                readable.set_result(None)
+
+        loop.add_reader(master, ready)
         try:
-            content = await loop.run_in_executor(None, os.read, master, 64 * 1024)
+            await readable
+        finally:
+            loop.remove_reader(master)
+        try:
+            content = os.read(master, 64 * 1024)
+        except BlockingIOError:
+            continue
         except OSError:
             return
         if not content:
@@ -262,10 +275,11 @@ async def pty_to_websocket(master: int, websocket: WebSocket) -> None:
 @app.websocket("/sandboxes/{sandbox_id}/ssh")
 async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
     try:
-        if await lume.find(sandbox_id) is None:
-            await websocket.close(code=1008, reason="sandbox not found")
-            return
-        address = await lume.ip(sandbox_id)
+        async with vm_lock(sandbox_id):
+            if await lume.find(sandbox_id) is None:
+                await websocket.close(code=1008, reason="sandbox not found")
+                return
+            address = await lume.ip(sandbox_id)
     except NodeOperationError as error:
         await websocket.close(code=1011, reason=str(error))
         return
@@ -295,6 +309,7 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
 
     print(f"[ssh] session {sandbox_id}: term={term} size={cols}x{rows} init={'control' if not initial_input else 'data'}", flush=True)
     master, slave = pty.openpty()
+    os.set_blocking(master, False)
     _set_winsize(master, rows, cols)
 
     def make_controlling_tty() -> None:

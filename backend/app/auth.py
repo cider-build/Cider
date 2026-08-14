@@ -75,14 +75,7 @@ def bearer_auth_context(authorization: str | None, db: Session) -> AuthContext:
     return user_context(db, api_token.user_id)
 
 
-def current_auth_context(
-    cider_session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
-    authorization: Annotated[str | None, Header()] = None,
-    db: Session = Depends(session_dependency),
-) -> AuthContext:
-    if authorization:
-        return bearer_auth_context(authorization, db)
-
+def session_auth_context(cider_session: str | None, db: Session) -> AuthContext:
     if not cider_session:
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
 
@@ -94,6 +87,16 @@ def current_auth_context(
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "not authenticated")
 
     return user_context(db, session.user_id)
+
+
+def current_auth_context(
+    cider_session: Annotated[str | None, Cookie(alias=settings.session_cookie_name)] = None,
+    authorization: Annotated[str | None, Header()] = None,
+    db: Session = Depends(session_dependency),
+) -> AuthContext:
+    if authorization:
+        return bearer_auth_context(authorization, db)
+    return session_auth_context(cider_session, db)
 
 
 def create_session(db: Session, response: Response, user_id: str) -> None:

@@ -8,8 +8,10 @@ import { NodesPage } from "./components/nodes-page/nodes-page";
 import {
   SandboxDetailPage,
   SandboxMetricsPage,
+  SandboxTerminalPage,
   ServerDetailPage,
   ServerMetricsPage,
+  ServerTerminalPage,
 } from "./components/resource-detail-page/resource-detail-page";
 import { SandboxesPage } from "./components/sandboxes-page/sandboxes-page";
 import { ServersPage } from "./components/servers-page/servers-page";
@@ -40,10 +42,12 @@ export function App() {
         <Route path="/sandboxes" element={<SandboxesPage />} />
         <Route path="/sandboxes/:sandboxId" element={<SandboxDetailPage />} />
         <Route path="/sandboxes/:sandboxId/metrics" element={<SandboxMetricsPage />} />
+        <Route path="/sandboxes/:sandboxId/terminal" element={<SandboxTerminalPage />} />
         <Route path="/servers" element={<ServersPage />} />
         <Route path="/servers/new" element={<CreateServerPage />} />
         <Route path="/servers/:serverId" element={<ServerDetailPage />} />
         <Route path="/servers/:serverId/metrics" element={<ServerMetricsPage />} />
+        <Route path="/servers/:serverId/terminal" element={<ServerTerminalPage />} />
         <Route path="/snapshots" element={<SnapshotsPage />} />
       </Route>
       <Route

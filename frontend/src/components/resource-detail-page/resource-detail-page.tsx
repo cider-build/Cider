@@ -10,6 +10,7 @@ import {
 import type { Node, Sandbox, Server } from "../../api";
 import { APPLE_LOGO, OS_RELEASES } from "../../image-catalog";
 import { NodeIcon } from "../node-icon";
+import { ResourceTerminal } from "../resource-terminal/resource-terminal";
 import { ResourceMetrics } from "./resource-metrics";
 import styles from "./resource-detail-page.module.css";
 
@@ -141,7 +142,7 @@ function OperatingSystem({ image }: { image: string }) {
   );
 }
 
-type ResourceTab = "overview" | "metrics";
+type ResourceTab = "overview" | "metrics" | "terminal";
 
 function ResourceDetailPage({ kind, id, tab }: { kind: ResourceKind; id: string; tab: ResourceTab }) {
   const parentPath = kind === "server" ? "/servers" : "/sandboxes";
@@ -191,6 +192,7 @@ function ResourceDetailPage({ kind, id, tab }: { kind: ResourceKind; id: string;
         <aside className={styles.rail}>
           <Link to={parentPath + `/${id}`} aria-current={tab === "overview" ? "page" : undefined}>Overview</Link>
           <Link to={parentPath + `/${id}/metrics`} aria-current={tab === "metrics" ? "page" : undefined}>Metrics</Link>
+          <Link to={parentPath + `/${id}/terminal`} aria-current={tab === "terminal" ? "page" : undefined}>Terminal</Link>
         </aside>
         <main className={styles.content}>
           <div className={styles.contentInner}>
@@ -200,12 +202,14 @@ function ResourceDetailPage({ kind, id, tab }: { kind: ResourceKind; id: string;
                 <ResourceDetails resource={resource} />
                 {server !== null && server.config !== null && <OperatingSystem image={server.config.image} />}
               </>
-            ) : (
+            ) : tab === "metrics" ? (
               <ResourceMetrics
                 kind={kind}
                 id={id}
                 running={running}
               />
+            ) : (
+              <ResourceTerminal kind={kind} resourceId={id} available={running} />
             )}
           </div>
         </main>
@@ -226,6 +230,12 @@ export function ServerMetricsPage() {
   return <ResourceDetailPage kind="server" id={serverId} tab="metrics" />;
 }
 
+export function ServerTerminalPage() {
+  const { serverId } = useParams<{ serverId: string }>();
+  if (serverId === undefined) throw new Error("The server route requires a server ID.");
+  return <ResourceDetailPage kind="server" id={serverId} tab="terminal" />;
+}
+
 export function SandboxDetailPage() {
   const { sandboxId } = useParams<{ sandboxId: string }>();
   if (sandboxId === undefined) throw new Error("The sandbox route requires a sandbox ID.");
@@ -236,4 +246,10 @@ export function SandboxMetricsPage() {
   const { sandboxId } = useParams<{ sandboxId: string }>();
   if (sandboxId === undefined) throw new Error("The sandbox route requires a sandbox ID.");
   return <ResourceDetailPage kind="sandbox" id={sandboxId} tab="metrics" />;
+}
+
+export function SandboxTerminalPage() {
+  const { sandboxId } = useParams<{ sandboxId: string }>();
+  if (sandboxId === undefined) throw new Error("The sandbox route requires a sandbox ID.");
+  return <ResourceDetailPage kind="sandbox" id={sandboxId} tab="terminal" />;
 }

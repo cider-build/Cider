@@ -146,3 +146,13 @@ export const resumeSandbox = (id: string) =>
 export const deleteSandbox = (id: string) => request<void>(`/sandboxes/${id}`, { method: "DELETE" });
 export const listSandboxes = () => request<Sandbox[]>("/sandboxes");
 export const getSandbox = (id: string) => request<Sandbox>(`/sandboxes/${id}`);
+
+export function resourceTerminalUrl(kind: "sandbox" | "server", id: string): string {
+  const url = new URL(API_URL);
+  if (url.protocol === "https:") url.protocol = "wss:";
+  else if (url.protocol === "http:") url.protocol = "ws:";
+  else throw new Error(`Unsupported API protocol: ${url.protocol}`);
+  url.pathname = `${url.pathname.replace(/\/$/, "")}/terminal/${kind}/${encodeURIComponent(id)}`;
+  url.search = "";
+  return url.toString();
+}
