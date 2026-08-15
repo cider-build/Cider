@@ -43,6 +43,18 @@ async def restore_vm(node: Node, vm_id: str, org_id: str, key: str) -> None:
     )
 
 
+async def vm_state(node: Node, vm_id: str) -> str | None:
+    response = await node_transport.request(node, "GET", "/sandboxes")
+    for vm in response.json():
+        if vm["id"] == vm_id:
+            return vm["status"]
+    return None
+
+
+async def start_vm(node: Node, vm_id: str) -> None:
+    await node_transport.request(node, "POST", f"/sandboxes/{vm_id}/start")
+
+
 async def find_capacity_node(db, org_id: str, node_id: str | None = None) -> Node:
     """Select a connected node and evict a warm VM when necessary."""
     if node_id is not None:

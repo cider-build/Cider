@@ -1,0 +1,106 @@
+.shell {
+  background: var(--color-terminal-background);
+  height: calc(100vh - 250px);
+  min-height: 500px;
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.terminal {
+  height: 100%;
+  padding: 18px 16px;
+  width: 100%;
+}
+
+.terminal :global(.xterm) {
+  height: 100%;
+}
+
+.terminal :global(.xterm-viewport) {
+  scrollbar-color: var(--color-terminal-border) var(--color-terminal-background);
+  scrollbar-width: thin;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .terminal :global(.xterm-cursor) {
+    animation: none !important;
+  }
+}
+
+.connection {
+  align-items: center;
+  background: var(--color-terminal-background);
+  color: var(--color-terminal-text-muted);
+  display: flex;
+  font-size: 12px;
+  gap: 9px;
+  inset: 0;
+  justify-content: center;
+  position: absolute;
+}
+
+.connection button {
+  background: transparent;
+  border: 0;
+  color: var(--color-terminal-text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.spinner {
+  animation: spin 800ms linear infinite;
+  border: 1px solid var(--color-terminal-border);
+  border-radius: 50%;
+  border-top-color: var(--color-terminal-placeholder);
+  height: 13px;
+  width: 13px;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation-duration: 2s !important;
+    animation-iteration-count: infinite !important;
+  }
+}
+
+.unavailable {
+  align-items: center;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 360px;
+  padding: 40px;
+  text-align: center;
+}
+
+.unavailable h2 {
+  font-size: 14px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.unavailable p {
+  color: var(--muted);
+  font-size: 12px;
+  margin: 8px 0 0;
+}
+
+@media (width <= 800px) {
+  .shell {
+    height: calc(100vh - 225px);
+    min-height: 440px;
+  }
+}

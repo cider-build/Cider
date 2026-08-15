@@ -1,5 +1,6 @@
 """Reconcile database workload state with each connected node."""
 
+import logging
 from datetime import timedelta
 
 from fastapi import HTTPException
@@ -8,11 +9,14 @@ from sqlmodel import select
 from ..db import get_session
 from ..models import Node, Sandbox, Server
 from ..models.base import utc_now
-from . import node_transport, warm_pool
+from . import inflight, node_transport, storage_usage, warm_pool
 from .node_gateway import node_gateway
+
+logger = logging.getLogger(__name__)
 
 # Ignore rows while asynchronous provisioning or restoration can remain active.
 GRACE = timedelta(seconds=180)
+MOVING = {"provisioning", "stopping"}
 
 
 async def reconcile_all_nodes() -> None:
@@ -49,14 +53,47 @@ async def reconcile_node(node_id: str) -> None:
             select(Server).where(Server.node_id == node_id, Server.deleted_at.is_(None))
         ).all()
         for server in servers:
-            if server.status != "running" or not server.vm_id:
+            repair_legacy_failure = server.status == "failed" and server.status_detail is None
+            stranded = server.status in MOVING and not inflight.is_active(server.id)
+            if server.status != "running" and not repair_legacy_failure and not stranded:
+                continue
+            if not server.vm_id and not stranded:
                 continue
             if server.created_at > cutoff:
                 continue
             state = vm_status.get(server.vm_id)
             if state == "running":
+                if repair_legacy_failure or stranded:
+                    server.status = "running"
+                    server.status_detail = None
+                    db.add(server)
                 continue
-            server.status = "failed"
+            previous_status = server.status
+            if stranded:
+                logger.info(
+                    "Server %s was %s, but its node reports %s",
+                    server.id,
+                    previous_status,
+                    state,
+                )
+            if state == "stopped":
+                server.status = "stopped"
+                server.status_detail = "The node stopped this VM. Start the server to resume it."
+            elif stranded and state is None:
+                server.status = "failed"
+                server.status_detail = (
+                    "Provisioning stopped when the backend restarted, and the node has no VM "
+                    "for this server. Retry to build it again."
+                    if previous_status == "provisioning"
+                    else "Stopping did not finish and the node has no VM for this server."
+                )
+            else:
+                server.status = "failed"
+                server.status_detail = (
+                    "The node no longer has this VM."
+                    if state is None
+                    else f"The node reports VM state: {state}."
+                )
             db.add(server)
 
         sandboxes = db.exec(
@@ -85,3 +122,29 @@ async def reconcile_node(node_id: str) -> None:
         refill = True
     if refill:
         await warm_pool.ensure_node_has_warm_sandboxes(node_id)
+
+    # Backfill measurements for running rows that have none recorded.
+    targets: list[tuple[type, str, str]] = []
+    with get_session() as db:
+        for model, status, vm_attr in ((Server, "running", "vm_id"), (Sandbox, "active", "id")):
+            rows = db.exec(
+                select(model).where(
+                    model.node_id == node_id,
+                    model.deleted_at.is_(None),
+                    model.status == status,
+                    model.storage_used_bytes.is_(None),
+                )
+            ).all()
+            targets += [
+                (model, row.id, getattr(row, vm_attr))
+                for row in rows
+                if vm_status.get(getattr(row, vm_attr)) == "running"
+            ]
+
+    for model, row_id, vm_id in targets:
+        try:
+            used_bytes = await storage_usage.measure_vm_storage(node, vm_id)
+        except HTTPException:
+            # An unreachable VM must not abort the sweep for the other rows.
+            continue
+        storage_usage.record(model, row_id, used_bytes)

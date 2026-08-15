@@ -1,0 +1,18 @@
+.row {
+  transition: background-color var(--duration-fast) var(--ease);
+}
+
+.row[data-clickable] {
+  cursor: pointer;
+}
+
+.row:focus-visible {
+  outline: 2px solid var(--orange);
+  outline-offset: -2px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .row[data-clickable]:hover {
+    background: var(--raise);
+  }
+}

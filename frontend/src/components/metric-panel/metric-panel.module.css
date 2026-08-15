@@ -1,0 +1,48 @@
+.metricPanel {
+  min-width: 0;
+  padding: 22px;
+}
+
+.metricHeader,
+.metricName,
+.summary {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.metricHeader,
+.summary {
+  justify-content: space-between;
+}
+
+.metricName svg {
+  color: var(--muted);
+}
+
+.metricName h2 {
+  font-size: inherit;
+  font-weight: inherit;
+  margin: 0;
+}
+
+.metricHeader > strong {
+  font-size: 17px;
+  font-weight: inherit;
+  letter-spacing: -0.02em;
+}
+
+.summary {
+  color: var(--muted);
+  margin-top: 8px;
+}
+
+.summary span {
+  display: flex;
+  gap: 6px;
+}
+
+.summary strong {
+  color: var(--ink);
+  font-weight: inherit;
+}

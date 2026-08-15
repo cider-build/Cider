@@ -1,0 +1,17 @@
+.state {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.error {
+  color: var(--color-danger);
+}
+
+.notice {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--orange);
+  background: var(--panel);
+  padding: 9px 12px;
+  color: var(--muted);
+}

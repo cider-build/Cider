@@ -1,0 +1,38 @@
+.foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-6);
+  margin-top: 9px;
+  color: var(--muted);
+}
+
+.pages {
+  display: flex;
+  gap: 3px;
+}
+
+.page {
+  min-width: 24px;
+  height: 24px;
+  border: 1px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  transition:
+    background-color var(--duration-control) ease,
+    color var(--duration-control) ease;
+}
+
+.current {
+  background: var(--soft);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .page:hover {
+    color: var(--ink);
+  }
+}

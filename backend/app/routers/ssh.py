@@ -1,5 +1,6 @@
 import asyncio
 import contextlib
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, status
 from pydantic import BaseModel
@@ -9,8 +10,10 @@ from ..auth import (
     AuthContext,
     bearer_auth_context,
     current_auth_context,
+    session_auth_context,
     valid_node_credential,
 )
+from ..config import settings
 from ..db import get_session
 from ..models import Node, Sandbox, Server
 from ..services.node_gateway import NodeUnavailableError, SshTunnel, node_gateway
@@ -114,12 +117,101 @@ async def pipe_websocket(source: WebSocket, destination: WebSocket) -> None:
             raise RuntimeError("SSH tunnels only accept data or control frames")
 
 
-@router.websocket("/ssh/{sandbox_id}")
-async def user_ssh(websocket: WebSocket, sandbox_id: str) -> None:
+def user_websocket_context(websocket: WebSocket, db) -> AuthContext:
+    origin = websocket.headers.get("origin")
+    if origin is not None and origin not in settings.cors_origins:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "origin not allowed")
     authorization = websocket.headers.get("authorization")
+    if authorization:
+        return bearer_auth_context(authorization, db)
+    return session_auth_context(websocket.cookies.get(settings.session_cookie_name), db)
+
+
+def terminal_target(
+    kind: Literal["sandbox", "server"],
+    resource_id: str,
+    org_id: str,
+) -> tuple[str, str]:
+    with get_session() as db:
+        if kind == "sandbox":
+            resource = db.get(Sandbox, resource_id)
+            running_status = "active"
+        else:
+            resource = db.get(Server, resource_id)
+            running_status = "running"
+        if (
+            resource is None
+            or resource.org_id != org_id
+            or resource.deleted_at is not None
+            or resource.status != running_status
+        ):
+            raise HTTPException(404, "running resource not found")
+        vm_id = resource.vm_id if isinstance(resource, Server) else resource.id
+        node = db.get(Node, resource.node_id)
+        if node is None or not node_gateway.is_connected(node.id):
+            raise HTTPException(404, "running resource not found")
+        return node.id, vm_id
+
+
+async def proxy_user_ssh(websocket: WebSocket, node_id: str, vm_id: str) -> None:
+    await websocket.accept()
+    tunnel_id = None
+    tunnel: SshTunnel | None = None
+    try:
+        tunnel_id, tunnel = await node_gateway.begin_ssh(node_id, vm_id)
+        node_socket = await node_gateway.wait_for_ssh(tunnel)
+        user_to_node = asyncio.create_task(pipe_websocket(websocket, node_socket))
+        node_to_user = asyncio.create_task(pipe_websocket(node_socket, websocket))
+        done, pending = await asyncio.wait(
+            (user_to_node, node_to_user),
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+        for task in pending:
+            task.cancel()
+        for task in done | pending:
+            with contextlib.suppress(asyncio.CancelledError, RuntimeError):
+                await task
+    except NodeUnavailableError as error:
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(
+                code=status.WS_1011_INTERNAL_ERROR,
+                reason=str(error),
+            )
+    finally:
+        if tunnel_id is not None and tunnel is not None:
+            await node_gateway.finish_ssh(tunnel_id, tunnel)
+        with contextlib.suppress(RuntimeError):
+            await websocket.close(code=status.WS_1000_NORMAL_CLOSURE)
+
+
+@router.websocket("/terminal/{kind}/{resource_id}")
+async def resource_terminal(
+    websocket: WebSocket,
+    kind: Literal["sandbox", "server"],
+    resource_id: str,
+) -> None:
     try:
         with get_session() as db:
-            ctx = bearer_auth_context(authorization, db)
+            ctx = user_websocket_context(websocket, db)
+        node_id, vm_id = terminal_target(
+            kind,
+            resource_id,
+            ctx.membership.organization_id,
+        )
+    except HTTPException as error:
+        await websocket.close(
+            code=status.WS_1008_POLICY_VIOLATION,
+            reason=str(error.detail),
+        )
+        return
+    await proxy_user_ssh(websocket, node_id, vm_id)
+
+
+@router.websocket("/ssh/{sandbox_id}")
+async def user_ssh(websocket: WebSocket, sandbox_id: str) -> None:
+    try:
+        with get_session() as db:
+            ctx = user_websocket_context(websocket, db)
             sandbox = db.get(Sandbox, sandbox_id)
             if (
                 sandbox is None
@@ -149,34 +241,7 @@ async def user_ssh(websocket: WebSocket, sandbox_id: str) -> None:
         )
         return
 
-    await websocket.accept()
-    tunnel_id = None
-    tunnel: SshTunnel | None = None
-    try:
-        tunnel_id, tunnel = await node_gateway.begin_ssh(node_id, sandbox_id)
-        node_socket = await node_gateway.wait_for_ssh(tunnel)
-        user_to_node = asyncio.create_task(pipe_websocket(websocket, node_socket))
-        node_to_user = asyncio.create_task(pipe_websocket(node_socket, websocket))
-        done, pending = await asyncio.wait(
-            (user_to_node, node_to_user),
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-        for task in pending:
-            task.cancel()
-        for task in done | pending:
-            with contextlib.suppress(asyncio.CancelledError, RuntimeError):
-                await task
-    except NodeUnavailableError as error:
-        with contextlib.suppress(RuntimeError):
-            await websocket.close(
-                code=status.WS_1011_INTERNAL_ERROR,
-                reason=str(error),
-            )
-    finally:
-        if tunnel_id is not None and tunnel is not None:
-            await node_gateway.finish_ssh(tunnel_id, tunnel)
-        with contextlib.suppress(RuntimeError):
-            await websocket.close(code=status.WS_1000_NORMAL_CLOSURE)
+    await proxy_user_ssh(websocket, node_id, sandbox_id)
 
 
 @router.websocket("/node-ssh/{node_id}/{tunnel_id}")

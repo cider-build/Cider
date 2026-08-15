@@ -32,3 +32,6 @@ scripts/
 # os
 .DS_Store
 docs/
+
+artifacts/
+tmp/

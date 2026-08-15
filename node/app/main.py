@@ -23,7 +23,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, StringConstraints
 
-from . import config, lume, portable_snapshot
+from . import config, lume, metrics, portable_snapshot
 from .errors import NodeOperationError
 
 app = FastAPI(title="Cider Node")
@@ -82,6 +82,37 @@ async def list_sandboxes() -> list[dict]:
         for vm in await lume.list_vms()
         if vm["name"] != config.BASE_VM
     ]
+
+
+@app.get("/sandboxes/{sandbox_id}/storage-usage")
+async def sandbox_storage_usage(sandbox_id: str) -> dict:
+    async with vm_lock(sandbox_id):
+        if await lume.find(sandbox_id) is None:
+            raise HTTPException(404, "sandbox not found")
+        command = (
+            "total=$(diskutil info -plist / | plutil -extract APFSContainerSize raw -); "
+            "free=$(diskutil info -plist / | plutil -extract APFSContainerFree raw -); "
+            "printf '%s\\n' $((total - free))"
+        )
+        output = await lume.execute(sandbox_id, command)
+        try:
+            used_bytes = int(output.strip())
+        except ValueError as error:
+            raise NodeOperationError("VM returned invalid storage usage") from error
+        if used_bytes < 0:
+            raise NodeOperationError("VM returned negative storage usage")
+        return {"used_bytes": used_bytes}
+
+
+@app.get("/sandboxes/{sandbox_id}/metrics", response_model=metrics.VmMetrics)
+async def sandbox_metrics(sandbox_id: str) -> metrics.VmMetrics:
+    async with vm_lock(sandbox_id):
+        vm = await lume.find(sandbox_id)
+        if vm is None:
+            raise HTTPException(404, "sandbox not found")
+        if vm["status"] != "running":
+            raise HTTPException(409, "sandbox is not running")
+        return await metrics.collect(sandbox_id)
 
 
 class ExecuteInput(BaseModel):
@@ -219,8 +250,21 @@ async def websocket_to_pty(websocket: WebSocket, master: int) -> None:
 async def pty_to_websocket(master: int, websocket: WebSocket) -> None:
     loop = asyncio.get_running_loop()
     while True:
+        readable = loop.create_future()
+
+        def ready() -> None:
+            if not readable.done():
+                readable.set_result(None)
+
+        loop.add_reader(master, ready)
         try:
-            content = await loop.run_in_executor(None, os.read, master, 64 * 1024)
+            await readable
+        finally:
+            loop.remove_reader(master)
+        try:
+            content = os.read(master, 64 * 1024)
+        except BlockingIOError:
+            continue
         except OSError:
             return
         if not content:
@@ -231,10 +275,11 @@ async def pty_to_websocket(master: int, websocket: WebSocket) -> None:
 @app.websocket("/sandboxes/{sandbox_id}/ssh")
 async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
     try:
-        if await lume.find(sandbox_id) is None:
-            await websocket.close(code=1008, reason="sandbox not found")
-            return
-        address = await lume.ip(sandbox_id)
+        async with vm_lock(sandbox_id):
+            if await lume.find(sandbox_id) is None:
+                await websocket.close(code=1008, reason="sandbox not found")
+                return
+            address = await lume.ip(sandbox_id)
     except NodeOperationError as error:
         await websocket.close(code=1011, reason=str(error))
         return
@@ -262,8 +307,8 @@ async def ssh_sandbox(websocket: WebSocket, sandbox_id: str) -> None:
         elif first.get("bytes") is not None:
             initial_input = first["bytes"]
 
-    print(f"[ssh] session {sandbox_id}: term={term} size={cols}x{rows} init={'control' if not initial_input else 'data'}", flush=True)
     master, slave = pty.openpty()
+    os.set_blocking(master, False)
     _set_winsize(master, rows, cols)
 
     def make_controlling_tty() -> None:

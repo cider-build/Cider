@@ -1,0 +1,13 @@
+.id {
+  display: inline-block;
+  max-width: 116px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.id[data-wide] {
+  max-width: 208px;
+}

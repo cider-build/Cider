@@ -1,0 +1,36 @@
+.head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-10);
+  margin-bottom: var(--space-7);
+}
+
+.headText {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.headText h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 24px;
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.7px;
+}
+
+.id {
+  margin: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
