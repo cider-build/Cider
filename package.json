@@ -1,0 +1,29 @@
+{
+  "name": "@cider/repository",
+  "description": "Cider repository tooling",
+  "scripts": {
+    "lint": "npm run lint:eslint && npm run lint:oxlint",
+    "lint:eslint": "eslint backend frontend landing-page",
+    "lint:oxlint": "oxlint backend frontend landing-page",
+    "lint:frontend": "eslint frontend && oxlint frontend",
+    "lint:backend": "eslint backend && oxlint backend",
+    "lint:landing": "eslint landing-page && oxlint landing-page"
+  },
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@oxlint/plugins": "1.78.0",
+    "@stylistic/eslint-plugin": "5.10.0",
+    "eslint": "10.8.1",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.4",
+    "globals": "17.11.0",
+    "oxlint": "1.78.0",
+    "typescript": "6.0.2",
+    "typescript-eslint": "8.67.0"
+  }
+}

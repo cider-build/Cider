@@ -1,10 +1,21 @@
 import js from '@eslint/js'
-import globals from 'globals'
+import stylistic from '@stylistic/eslint-plugin'
 import reactHooks from 'eslint-plugin-react-hooks'
 import reactRefresh from 'eslint-plugin-react-refresh'
-import stylistic from '@stylistic/eslint-plugin'
+import globals from 'globals'
 import tseslint from 'typescript-eslint'
 import { defineConfig, globalIgnores } from 'eslint/config'
+
+const typescriptFiles = [
+  'backend/**/*.{ts,tsx}',
+  'frontend/**/*.{ts,tsx}',
+  'landing-page/**/*.{ts,tsx}',
+]
+
+const reactFiles = [
+  'frontend/**/*.{ts,tsx}',
+  'landing-page/**/*.{ts,tsx}',
+]
 
 const componentRules = {
   rules: {
@@ -58,14 +69,17 @@ const componentRules = {
 }
 
 export default defineConfig([
-  globalIgnores(['dist']),
+  globalIgnores([
+    '**/dist/**',
+    '**/node_modules/**',
+    '.cider/**',
+    'tools/oxlint/anti-slop/**',
+  ]),
   {
-    files: ['**/*.{ts,tsx}'],
+    files: typescriptFiles,
     extends: [
       js.configs.recommended,
       tseslint.configs.recommendedTypeChecked,
-      reactHooks.configs.flat['recommended-latest'],
-      reactRefresh.configs.vite,
       stylistic.configs.customize({
         indent: 2,
         quotes: 'double',
@@ -79,7 +93,6 @@ export default defineConfig([
       cider: componentRules,
     },
     languageOptions: {
-      globals: globals.browser,
       parserOptions: {
         projectService: true,
         tsconfigRootDir: import.meta.dirname,
@@ -116,17 +129,35 @@ export default defineConfig([
       ],
       'max-nested-callbacks': ['warn', 3],
       'max-params': ['warn', 4],
+    },
+  },
+  {
+    files: ['backend/**/*.ts'],
+    languageOptions: {
+      globals: globals.node,
+    },
+  },
+  {
+    files: reactFiles,
+    extends: [
+      reactHooks.configs.flat['recommended-latest'],
+      reactRefresh.configs.vite,
+    ],
+    languageOptions: {
+      globals: globals.browser,
+    },
+    rules: {
       'react-hooks/component-hook-factories': 'error',
     },
   },
   {
-    files: ['**/*.tsx'],
+    files: ['frontend/**/*.tsx'],
     rules: {
       'cider/one-top-level-function': 'error',
     },
   },
   {
-    files: ['src/components/**/*.{ts,tsx}'],
+    files: ['frontend/src/components/**/*.{ts,tsx}'],
     rules: {
       'no-restricted-imports': [
         'error',
