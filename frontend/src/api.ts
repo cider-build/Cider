@@ -1,4 +1,6 @@
-const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:8000";
+import { authClient } from "./auth-client";
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 export type AuthOut = {
   user: { id: string; email: string };
@@ -91,14 +93,24 @@ export type Snapshot = {
 type RequestOptions = { method?: string; json?: unknown; nullStatus?: number };
 
 async function responseError(response: Response): Promise<Error> {
-  const body: unknown = await response.json();
+  const fallback = new Error(`Request failed with status ${response.status}.`);
+  const text = await response.text();
+  if (text === "") {
+    return fallback;
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return new Error(text);
+  }
   if (
     typeof body !== "object"
     || body === null
     || !("detail" in body)
     || typeof body.detail !== "string"
   ) {
-    throw new TypeError("The API error response must contain a detail string.");
+    return fallback;
   }
   return new Error(body.detail);
 }
@@ -127,14 +139,87 @@ async function request<T>(
     : ((await response.json()) as T);
 }
 
-export const me = () =>
-  request<AuthOut | null>("/auth/me", { nullStatus: 401 });
+function organizationSlug(name: string): string {
+  const slug = name
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-")
+    .replaceAll(/(^-|-$)/g, "");
+  if (slug.length === 0) {
+    throw new Error("The organization name must contain a letter or number.");
+  }
+  return `${slug}-${crypto.randomUUID().slice(0, 8)}`;
+}
 
-export const signup = (body: SignupInput) =>
-  request<AuthOut>("/auth/signup", { method: "POST", json: body });
-export const login = (body: LoginInput) =>
-  request<AuthOut>("/auth/login", { method: "POST", json: body });
-export const logout = () => request<void>("/auth/logout", { method: "POST" });
+export async function me(): Promise<AuthOut | null> {
+  const session = await authClient.getSession();
+  if (session.error) throw new Error(session.error.message);
+  if (session.data === null) return null;
+
+  const organization = await authClient.organization.getFullOrganization();
+  if (organization.error) throw new Error(organization.error.message);
+  if (organization.data === null) {
+    throw new Error("The session has no active organization.");
+  }
+
+  return {
+    user: { id: session.data.user.id, email: session.data.user.email },
+    organization: { id: organization.data.id, name: organization.data.name },
+  };
+}
+
+export async function signup(input: SignupInput): Promise<AuthOut> {
+  const signupResult = await authClient.signUp.email({
+    name: input.email,
+    email: input.email,
+    password: input.password,
+  });
+  if (signupResult.error) throw new Error(signupResult.error.message);
+
+  const organizationResult = await authClient.organization.create({
+    name: input.organization_name,
+    slug: organizationSlug(input.organization_name),
+    keepCurrentActiveOrganization: false,
+  });
+  if (organizationResult.error) throw new Error(organizationResult.error.message);
+
+  return {
+    user: {
+      id: signupResult.data.user.id,
+      email: signupResult.data.user.email,
+    },
+    organization: {
+      id: organizationResult.data.id,
+      name: organizationResult.data.name,
+    },
+  };
+}
+
+export async function login(input: LoginInput): Promise<AuthOut> {
+  const loginResult = await authClient.signIn.email(input);
+  if (loginResult.error) throw new Error(loginResult.error.message);
+
+  const organizations = await authClient.organization.list();
+  if (organizations.error) throw new Error(organizations.error.message);
+  const organization = organizations.data.at(0);
+  if (organization === undefined) {
+    throw new Error("The account has no organization.");
+  }
+
+  const activeOrganization = await authClient.organization.setActive({
+    organizationId: organization.id,
+  });
+  if (activeOrganization.error) throw new Error(activeOrganization.error.message);
+
+  return {
+    user: { id: loginResult.data.user.id, email: loginResult.data.user.email },
+    organization: { id: organization.id, name: organization.name },
+  };
+}
+
+export async function logout(): Promise<void> {
+  const result = await authClient.signOut();
+  if (result.error) throw new Error(result.error.message);
+}
 
 export function listNodes({
   page,
