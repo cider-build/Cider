@@ -2,6 +2,7 @@
 node_modules/
 frontend/dist/
 landing-page/dist/
+backend/dist/
 .next/
 next-env.d.ts
 
@@ -18,6 +19,7 @@ __pycache__/
 *.db
 *.db-journal
 *.db-shm
+*.db-wal
 
 # env
 .env
@@ -27,6 +29,7 @@ __pycache__/
 # editor / agent
 .cider/
 .claude/
+.agents/
 
 scripts/
 # os
