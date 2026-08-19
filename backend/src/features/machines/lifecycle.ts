@@ -196,9 +196,7 @@ export class MachineLifecycle extends Context.Service<
         key: string,
       ) {
         const manifest = yield* portableSnapshot(nodeId, vmId, yield* ids.uuid);
-        yield* snapshots.write(organizationId, key, manifest).pipe(
-          Effect.tapError(() => snapshots.discard(organizationId, key).pipe(Effect.ignore)),
-        );
+        yield* snapshots.write(organizationId, key, manifest);
         yield* deleteVm(nodeId, vmId).pipe(
           Effect.mapError((cause) =>
             new MachineOperationFailed({

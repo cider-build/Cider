@@ -65,6 +65,7 @@ const SnapshotDatabaseRow = Schema.Struct({
   sourceSandboxId: SandboxId,
   organizationId: OrganizationId,
   launchConfiguration: databaseJson(LaunchConfiguration),
+  sizeBytes: Schema.NullOr(Schema.Int),
   createdAt: Schema.DateTimeUtcFromString,
   deletedAt: Schema.NullOr(Schema.DateTimeUtcFromString),
 });
@@ -204,6 +205,7 @@ export interface MachinePersistenceApi {
     readonly sourceSandboxId: SandboxId;
     readonly organizationId: OrganizationId;
     readonly launchConfiguration: LaunchConfiguration | null;
+    readonly sizeBytes: number | null;
   }) => Effect.Effect<SnapshotDatabaseRow, ReadError>;
   readonly deleteSnapshot: (
     id: SnapshotId,
@@ -551,11 +553,11 @@ export class MachinePersistence extends Context.Service<
           yield* sql`
             INSERT INTO snapshot (
               id, source_sandbox_id, organization_id, launch_configuration,
-              created_at, deleted_at
+              size_bytes, created_at, deleted_at
             ) VALUES (
               ${input.id}, ${input.sourceSandboxId}, ${input.organizationId},
               ${input.launchConfiguration === null ? null : JSON.stringify(input.launchConfiguration)},
-              ${DateTime.formatIso(now)}, NULL
+              ${input.sizeBytes}, ${DateTime.formatIso(now)}, NULL
             )
           `;
           yield* sql`

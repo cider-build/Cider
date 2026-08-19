@@ -1,6 +1,7 @@
 import asyncio
 import gzip
 import hashlib
+import json
 import os
 import urllib.error
 import urllib.request
@@ -20,52 +21,54 @@ def _base_image_id() -> str:
     return image_id
 
 
-def _request(method: str, path: str, body: bytes | None = None) -> bytes:
-    api_url, _, token = config.require_storage_config()
-    request = urllib.request.Request(
-        f"{api_url}{path}",
-        data=body,
-        method=method,
-        headers={"Authorization": f"Bearer {token}"},
-    )
+def _request(
+    method: str,
+    url: str,
+    body: bytes | None = None,
+    headers: dict[str, str] | None = None,
+    what: str = "Cider storage",
+) -> bytes:
+    request = urllib.request.Request(url, data=body, method=method, headers=headers or {})
     try:
         with urllib.request.urlopen(request, timeout=300) as response:
             return response.read()
     except urllib.error.HTTPError as error:
         detail = error.read().decode(errors="replace")
-        raise NodeOperationError(f"Cider storage {method} {path} failed ({error.code}): {detail}") from error
+        raise NodeOperationError(f"{what} {method} failed ({error.code}): {detail}") from error
     except urllib.error.URLError as error:
-        raise NodeOperationError(f"Cider storage {method} {path} failed: {error.reason}") from error
+        raise NodeOperationError(f"{what} {method} failed: {error.reason}") from error
 
 
-def _blob_exists(digest: str) -> bool:
+def _blob_url(digest: str, kind: str) -> str | None:
+    """Ask the backend for a presigned object-store URL; the bytes never pass through it."""
     api_url, _, token = config.require_storage_config()
-    request = urllib.request.Request(
-        f"{api_url}/node-storage/blobs/{digest}",
-        method="HEAD",
+    body = _request(
+        "GET",
+        f"{api_url}/node-storage/blobs/{digest}/{kind}-url",
         headers={"Authorization": f"Bearer {token}"},
     )
-    try:
-        with urllib.request.urlopen(request, timeout=300):
-            return True
-    except urllib.error.HTTPError as error:
-        if error.code == 404:
-            return False
-        detail = error.read().decode(errors="replace")
-        raise NodeOperationError(f"Cider storage HEAD failed ({error.code}): {detail}") from error
-    except urllib.error.URLError as error:
-        raise NodeOperationError(f"Cider storage HEAD failed: {error.reason}") from error
+    return json.loads(body)["url"]
 
 
 def _put_blob(content: bytes) -> str:
     digest = hashlib.sha256(content).hexdigest()
-    if not _blob_exists(digest):
-        _request("PUT", f"/node-storage/blobs/{digest}", content)
+    url = _blob_url(digest, "upload")
+    if url is not None:
+        _request(
+            "PUT",
+            url,
+            content,
+            headers={"Content-Type": "application/octet-stream"},
+            what=f"blob {digest} upload",
+        )
     return digest
 
 
 def _get_blob(digest: str) -> bytes:
-    content = _request("GET", f"/node-storage/blobs/{digest}")
+    url = _blob_url(digest, "download")
+    if url is None:
+        raise NodeOperationError(f"Cider storage returned no download URL for blob {digest}")
+    content = _request("GET", url, what=f"blob {digest} download")
     if hashlib.sha256(content).hexdigest() != digest:
         raise NodeOperationError(f"Cider storage returned corrupt blob {digest}")
     return content

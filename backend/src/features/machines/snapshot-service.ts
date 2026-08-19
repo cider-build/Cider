@@ -45,30 +45,22 @@ export class SnapshotService extends Context.Service<
       const lifecycle = yield* MachineLifecycle;
       const warmPool = yield* WarmPool;
 
-      const toView = Effect.fn("SnapshotService.toView")(function* (
-        organizationId: OrganizationId,
-        snapshot: SnapshotDatabaseRow,
-      ) {
-        const size
-          = snapshot.deletedAt === null
-            ? yield* store.size(organizationId, snapshot.id)
-            : null;
-        return {
-          id: snapshot.id,
-          source_sandbox_id: snapshot.sourceSandboxId,
-          created_at: snapshot.createdAt,
-          deleted_at: snapshot.deletedAt,
-          size_bytes: size,
-        };
+      const toView = (snapshot: SnapshotDatabaseRow): SnapshotView => ({
+        id: snapshot.id,
+        source_sandbox_id: snapshot.sourceSandboxId,
+        created_at: snapshot.createdAt,
+        deleted_at: snapshot.deletedAt,
+        size_bytes: snapshot.deletedAt === null ? snapshot.sizeBytes : null,
       });
 
-      const list = Effect.fn("SnapshotService.list")(function* (
+      const list = Effect.fn("SnapshotService.list")((
         organizationId: OrganizationId,
         includeDeleted: boolean,
-      ) {
-        const rows = yield* persistence.listSnapshots(organizationId, includeDeleted);
-        return yield* Effect.forEach(rows, (snapshot) => toView(organizationId, snapshot));
-      });
+      ) =>
+        persistence
+          .listSnapshots(organizationId, includeDeleted)
+          .pipe(Effect.map((rows) => rows.map(toView))),
+      );
 
       const restore = Effect.fn("SnapshotService.restore")(function* (
         organizationId: OrganizationId,
@@ -131,7 +123,7 @@ export class SnapshotService extends Context.Service<
         id: SnapshotId,
       ) {
         yield* persistence.getSnapshot(id, organizationId);
-        yield* store.delete(organizationId, id);
+        yield* store.discard(organizationId, id);
         const now = yield* DateTime.now;
         yield* persistence.deleteSnapshot(id, organizationId, now);
       });
