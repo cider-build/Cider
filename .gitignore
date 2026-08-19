@@ -29,6 +29,7 @@ __pycache__/
 # editor / agent
 .cider/
 .claude/
+.agents/
 
 scripts/
 # os
