@@ -1,0 +1,78 @@
+---
+title: Errors
+description: Every error response has the same shape. Here are the status codes and the messages you can expect.
+icon: TriangleAlert
+---
+
+## Error body
+
+Every error is a JSON object with a `_tag` and a human-readable `detail`:
+
+```json
+{ "_tag": "Conflict", "detail": "sandbox is paused; only a running sandbox can be paused" }
+```
+
+`_tag` matches the status code. `detail` is meant to be shown to a person and can change; do not parse it.
+
+## Status codes
+
+| Status | `_tag` | When |
+| --- | --- | --- |
+| `400` | `BadRequest` | The request could not be read, for example a multipart body that does not parse. |
+| `401` | `Unauthorized` | Missing or invalid API key. |
+| `404` | `NotFound` | The resource does not exist in your organization, or no node can take the request. |
+| `409` | `Conflict` | The resource is in a state that does not allow the operation, or a name is taken. |
+| `422` | `UnprocessableContent` | The body, query, or path failed validation, or no node is large enough. |
+| `429` | `TooManyRequests` | Every fitting node is at its VM capacity. |
+| `500` | — | Something failed on Cider's side or on the node. Retry; if it persists, contact support with the request time. |
+| `503` | `ServiceUnavailable` | Cider or the node is temporarily unavailable. Retry with backoff. |
+
+## Validation errors
+
+A body, query, or path parameter that fails validation returns `422` with `detail` that starts with `invalid payload:`, `invalid query:`, or `invalid params:` followed by the schema message:
+
+```json
+{ "_tag": "UnprocessableContent", "detail": "invalid payload: name: expected a string of length between 1 and 63" }
+```
+
+## Placement errors
+
+These come from any endpoint that creates or restores a VM.
+
+| Status | `detail` |
+| --- | --- |
+| `404` | `no connected nodes` |
+| `404` | `node not found or not connected` |
+| `422` | `no connected node offers 8 CPU cores, 32 GiB of memory, and 60 GiB of free storage` |
+| `429` | `every eligible node is at its VM capacity; stop something first` |
+
+## State errors
+
+| Status | `detail` |
+| --- | --- |
+| `409` | `sandbox is <state>; only a running sandbox can be paused` |
+| `409` | `sandbox is <state>; only a paused sandbox can be resumed` |
+| `409` | `sandbox is <state>; wait for it to be available` |
+| `409` | `snapshots require a running sandbox` |
+| `409` | `sandbox is not stopped` |
+| `409` | `server is <state>; it cannot be stopped` |
+| `409` | `server is <state>; it cannot be started` |
+| `409` | `server is <state>; only a failed server can be retried` |
+| `409` | `a server named 'X' already exists` |
+| `409` | `node has running servers; stop or delete them first` |
+| `409` | `node has active sandboxes; delete them first` |
+| `409` | `node name already exists and is connected` |
+
+## Configuration errors
+
+| Status | `detail` |
+| --- | --- |
+| `422` | `unknown software: foo` |
+| `422` | `Xcode ships as its own base image and is not available yet` |
+| `422` | `node_id is not a valid node id` |
+| `422` | `cider.yaml has an invalid launch configuration` |
+| `422` | `resources.min_storage must be bytes or a size like "60GB"` |
+
+## Retrying
+
+`500` and `503` are safe to retry for reads. For writes, check the resource state first: a `POST /servers` that timed out may still have created the server.

@@ -1,0 +1,77 @@
+---
+title: Sandboxes
+description: A sandbox is a short-lived macOS VM that Cider creates from your project. Learn its states, its time to live, and how pause, snapshot, and restore move it between nodes.
+icon: Box
+---
+
+A sandbox is a macOS VM that Cider clones from the base image on one of your nodes. You create it from a local Git worktree with `cider open`, from the API with `POST /sandboxes`, or empty with `cider sandboxes create`.
+
+Every sandbox has an ID of the form `cider-` followed by 32 hexadecimal characters, for example `cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3`. The ID is also the name of the VM on the node.
+
+## What a sandbox contains
+
+- A fresh clone of the node's base image (macOS 26 with Git, Python 3, and Homebrew).
+- Your uploaded project at `~/cider/<project-name>` in the guest, if you uploaded one.
+- The results of your `cider.yaml` `setup` commands.
+- Anything you install or change while you work.
+
+The guest user is `lume`. Homebrew is installed but is not on the `PATH` of non-login shells. Cider runs `cider.yaml` commands in a login `zsh` shell, so `brew` works there. In your own scripts, use a login shell or call `/opt/homebrew/bin/brew` directly.
+
+## Sizing
+
+A sandbox inherits the CPU, memory, and disk of the base image unless `cider.yaml` asks for more disk with `resources.min_storage`. The node reports the size the VM really got. The disk never shrinks below the base image size.
+
+Cider records `cpu_count`, `memory_bytes`, and `storage_bytes` on every sandbox, and it measures `storage_used_bytes` inside the guest after creation, pause, and snapshot.
+
+## States
+
+| State | Meaning |
+| --- | --- |
+| `active` | The VM runs on a node. You can SSH in, execute commands, pause, or snapshot. |
+| `pausing` | Cider exports the disk to Cider storage and deletes the VM. |
+| `paused` | The disk lives in Cider storage. The node slot is free. Resume to continue. |
+| `restoring` | Cider rebuilds the VM on a node from a saved disk. |
+| `stopped` | The sandbox was snapshotted. The VM is gone. Restore the snapshot to get a new active sandbox. |
+
+Transitions:
+
+```text
+create ─────────────────► active
+active ── pause ───────► pausing ──► paused
+paused ── resume ──────► restoring ──► active   (any node with a free slot)
+active ── snapshot ────► stopped                (snapshot saved, VM deleted)
+stopped ── restore ────► restoring ──► active
+active ── expire ──────► deleted                (see time to live)
+```
+
+If a pause fails, the sandbox returns to `active`. If a resume fails, it returns to `paused` on the original node. Cider never leaves a sandbox stuck in a transitional state.
+
+## Time to live
+
+Sandboxes are meant to be short-lived. A background job deletes any `active` sandbox that is older than the sandbox time to live (TTL). Resuming a paused sandbox or restoring a snapshot resets the sandbox's `created_at`, which restarts the TTL clock.
+
+<Note>
+  Pausing a sandbox stops the TTL clock. A paused sandbox stays in Cider storage until you resume or delete it.
+</Note>
+
+## Pause and resume
+
+`cider sandboxes pause <id>` writes the VM disk to Cider storage as a portable export, then deletes the VM. This frees one of the two VM slots on the node. `cider sandboxes resume <id>` picks any connected node with a free slot, restores the disk there, and re-runs your `cider.yaml` `start` command. `setup` does not run again; its effects live on the disk.
+
+Cider only stores the blocks that differ from the base image, so a pause of a lightly-used sandbox is fast and small.
+
+<Note>
+  Pause and snapshot compare the sandbox disk with the base image block by block. A sandbox whose disk grew past the base image size, through `resources.min_storage`, cannot be paused or snapshotted yet.
+</Note>
+
+## Snapshots
+
+`cider sandboxes snapshot <id>` saves a portable snapshot and moves the sandbox to `stopped`. You can restore a snapshot as many times as you like, on any node whose base image matches. See [Snapshots](/concepts/snapshots).
+
+## Execute without a shell
+
+`cider sandboxes exec <id> <command>` and `POST /sandboxes/{id}/execute` run one command in the guest over SSH and return its standard output. The command runs in a non-login shell, so call Homebrew tools by full path or through `zsh -lc`. This is the most direct way to script a sandbox.
+
+## Where sandboxes live
+
+Cider places each sandbox on a connected node in your organization. You can pin a node with `cider ssh --new <node>` on the CLI or `node_id` in the API. Otherwise Cider picks the first node, in name order, that has enough free storage and a free VM slot. See [Node capacity](/nodes/capacity).

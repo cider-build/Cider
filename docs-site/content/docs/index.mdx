@@ -1,0 +1,55 @@
+---
+title: Introduction
+description: Cider gives you macOS virtual machines on demand. Run your project in a sandbox, keep long-lived servers for agents and CI, and bring your own Apple Silicon Macs as nodes.
+icon: BookOpen
+---
+
+Cider is a provisioning platform for macOS virtual machines (VMs). You point it at your own Apple Silicon Macs, and it turns them into a pool of fresh macOS machines that you reach from the console, the command line interface (CLI), or the REST API.
+
+## What you can do with Cider
+
+<CardGroup cols={2}>
+  <Card title="Open a sandbox from your project" icon="folder-open" href="/cli/commands/open">
+    Run `cider open .` in any Git worktree. Cider uploads the tree, boots a macOS VM, and runs your `cider.yaml`. Then `cider ssh` drops you into a shell.
+  </Card>
+  <Card title="Keep servers for agents and CI" icon="server" href="/concepts/servers">
+    Create a named, sized machine that survives restarts. Preinstall coding agents, connect chat channels, and manage the machine from the console or the API.
+  </Card>
+  <Card title="Connect your own Macs" icon="cpu" href="/nodes/connect">
+    Every Apple Silicon Mac you connect becomes a node. Cider schedules VMs across your nodes and keeps track of their capacity.
+  </Card>
+  <Card title="Automate with the API" icon="code" href="/api-reference/introduction">
+    Create an API key in the console and drive sandboxes, servers, snapshots, and nodes from your own tooling.
+  </Card>
+</CardGroup>
+
+## How the pieces fit together
+
+| Piece | What it is | Where you use it |
+| --- | --- | --- |
+| **Console** | The web app at [app.cider.build](https://app.cider.build). Shows your nodes, sandboxes, servers, and snapshots, and hosts terminals in the browser. | Browser |
+| **CLI** | The `cider` command. Opens sandboxes from local code, starts SSH sessions, and connects Macs as nodes. | Your terminal |
+| **API** | A REST API with API-key authentication. Everything the console does, you can script. | Your code |
+| **Nodes** | Your Apple Silicon Macs, connected with `cider connect`. They run the VMs. | Your hardware |
+
+Cider never runs your code on shared hosts. Every VM runs on a node in your organization, and each node runs at most two macOS guests at a time, which is the limit Apple sets for macOS virtualization on Apple Silicon.
+
+## Sandboxes and servers
+
+Cider has two kinds of machines:
+
+- A **sandbox** is short-lived. You create it from a local project (or empty), work in it, pause it, snapshot it, or let it expire. Sandbox IDs look like `cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3`.
+- A **server** is long-lived. It has a name, an explicit size, and a configuration that Cider applies when it provisions the VM. Servers stop and start without losing their disk.
+
+Read [Sandboxes](/concepts/sandboxes) and [Servers](/concepts/servers) for the full lifecycle of each.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Install the CLI, connect a Mac, and open your first sandbox in ten minutes.
+  </Card>
+  <Card title="What is a node?" icon="cpu" href="/nodes/overview">
+    Learn how a Mac becomes a node, how VMs run on it, and how Cider talks to it.
+  </Card>
+</CardGroup>

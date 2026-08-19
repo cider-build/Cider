@@ -1,0 +1,75 @@
+---
+title: Terminals over WebSocket
+description: Open an interactive shell in a sandbox or server from your own client.
+icon: Terminal
+---
+
+The console terminal and `cider ssh` both use the same WebSocket endpoint. You can use it too.
+
+## Endpoints
+
+| URL | Target |
+| --- | --- |
+| `wss://api.cider.build/ssh/{sandbox_id}` | A sandbox by ID, or a server by its VM ID (see `GET /ssh`). |
+| `wss://api.cider.build/terminal/sandbox/{sandbox_id}` | A sandbox by ID. |
+| `wss://api.cider.build/terminal/server/{server_id}` | A server by server ID. |
+
+Authenticate with `Authorization: Bearer <api key>` on the upgrade request. The target must be an `active` sandbox or a `running` server on a connected node.
+
+## Find targets
+
+`GET /ssh` lists what you can connect to right now:
+
+```json
+[
+  { "sandbox_id": "cider-3f9a…", "node_id": "9f2c…", "node_name": "studio-m2", "status": "active", "server_name": null },
+  { "sandbox_id": "cider-b1d4…", "node_id": "9f2c…", "node_name": "studio-m2", "status": "running", "server_name": "api-staging" }
+]
+```
+
+For servers, `sandbox_id` is the server's VM ID. Use it with `/ssh/{sandbox_id}`.
+
+## Protocol
+
+- **Binary frames** carry raw terminal bytes in both directions.
+- **Text frames** from you carry JSON control messages. The server never sends text frames.
+
+Send one control frame first, with your terminal type and size:
+
+```json
+{ "term": "xterm-256color", "resize": { "cols": 120, "rows": 40 } }
+```
+
+`term` is honored only on the first frame. Send `{ "resize": { "cols": …, "rows": … } }` again whenever the window changes.
+
+Then write keystrokes as binary frames and render binary frames you receive. To end the session, send `0x04` (end of transmission) or close with code `1000`.
+
+## Close codes
+
+| Code | Reason |
+| --- | --- |
+| `1000` | Normal close. |
+| `1003` | You sent an invalid frame, or received a text frame (protocol violation). |
+| `1008` | Not authorized, origin not allowed, or the target is not available. |
+| `1011` | The node could not open the session (offline, timed out). |
+
+## Example
+
+```javascript
+import WebSocket from "ws";
+
+const ws = new WebSocket("wss://api.cider.build/ssh/cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3", {
+  headers: { Authorization: `Bearer ${process.env.CIDER_TOKEN}` },
+});
+
+ws.on("open", () => {
+  ws.send(JSON.stringify({ term: "xterm-256color", resize: { cols: 120, rows: 40 } }));
+  process.stdin.setRawMode(true);
+  process.stdin.on("data", (chunk) => ws.send(chunk));
+});
+
+ws.on("message", (data, isBinary) => {
+  if (!isBinary) return ws.close(1003, "unexpected text frame");
+  process.stdout.write(data);
+});
+```

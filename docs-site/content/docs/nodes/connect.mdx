@@ -1,0 +1,135 @@
+---
+title: Connect a node
+description: Turn an Apple Silicon Mac into a Cider node with cider connect. Covers login, the base image download, enrollment, and what to expect on screen.
+icon: Plug
+---
+
+`cider connect` does everything needed to make the Mac you run it on a node in your organization. Run it once interactively to enroll. Then run it as a service so it stays connected. See [Run a node as a service](/nodes/run-as-a-service).
+
+## Before you begin
+
+Check [Node requirements](/nodes/requirements). In short: Apple Silicon, macOS 15 or later, Lume installed, Node.js 18.20 or later, and 60 GB free.
+
+## Connect
+
+<Steps>
+  <Step title="Run cider connect">
+    ```bash
+    cider connect
+    ```
+
+    Options:
+
+    | Flag | Meaning |
+    | --- | --- |
+    | `--name <name>` | Node name. Defaults to the name from a previous enrollment, then to the Mac's hostname. Names are unique in your organization. |
+    | `--image <name:tag>` | Base image to pull. Defaults to `macos-tahoe-cua:26.5.2`. Use the same image on every node so snapshots move between them. |
+    | `--node-command <path>` | Path to the `cider-node` runtime. Defaults to `cider-node` on `PATH`. |
+    | `-y`, `--yes` | Do not ask before downloading the base image. |
+  </Step>
+
+  <Step title="Log in">
+    On the first run, or when your login has expired, the CLI asks for your Cider credentials:
+
+    ```text
+    Log in to Cider
+    Email: you@example.com
+    Password:
+    Authenticated as you@example.com (Acme)
+    ```
+
+    The CLI writes the session to `~/.cider/config.json` with mode `0600`. For unattended installs, set `CIDER_TOKEN` to an API key instead. See [CLI authentication](/cli/authentication).
+  </Step>
+
+  <Step title="Approve the base image download">
+    ```text
+    Cider base VM "cider-base" is not installed in /Users/you/.cider/vms. Create it now? [y/N] y
+    Installing macos-tahoe-cua:26.5.2 as cider-base. This is a large one-time download.
+    ```
+
+    Lume pulls the image into `~/.cider/vms/cider-base`. Progress prints as it downloads. The image is several gigabytes; on a fast connection this takes a few minutes. Pass `--yes` to skip the prompt.
+
+    After the download, the CLI computes a SHA-256 of the base disk once and caches it in `~/.cider/cider-base.image-id`. This is the compatibility key for [snapshots](/concepts/snapshots).
+
+    ```text
+    Identifying the Cider base image for portable snapshots...
+    ```
+  </Step>
+
+  <Step title="Enrollment">
+    The CLI reads the Mac's hardware (model, chip, macOS version, cores, memory, free disk, and the base image size) and enrolls the node:
+
+    ```http
+    POST /nodes/enrollments
+    { "name": "studio-m2" }
+    ```
+
+    Cider returns the node ID and a credential that the CLI stores in `~/.cider/node.json` (mode `0600`). The credential is shown once and stored hashed on Cider's side.
+
+    If a node with that name is already connected, you see:
+
+    ```text
+    cider: a node named "studio-m2" is already connected; disconnect it, pass --name, or retry in a minute if it just went offline
+    ```
+
+    If the node exists but is offline, Cider rotates its credential and reuses the same node ID. After enrollment the CLI prints:
+
+    ```text
+    Base VM ready: /Users/you/.cider/vms/cider-base
+    ```
+  </Step>
+
+  <Step title="The node comes online">
+    The CLI starts the node runtime on `127.0.0.1:8001`, waits for it to report healthy, and opens the connection to Cider:
+
+    ```text
+    Connected studio-m2 to Cider. Press Ctrl+C to disconnect.
+    ```
+
+    In the console, **Nodes** now shows the node as connected, with its hardware and capacity. Leave the command running. If the connection drops, the CLI reconnects with a backoff from 1 second up to 60 seconds and prints:
+
+    ```text
+    Node connection lost (socket hang up); reconnecting in 2s
+    ```
+  </Step>
+</Steps>
+
+## Verify
+
+From any machine with the CLI:
+
+```bash
+cider nodes
+```
+
+```text
+id                                name        connected
+9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7  studio-m2   true
+```
+
+Then create a sandbox on it:
+
+```bash
+cider ssh --new studio-m2
+```
+
+## Disconnect
+
+Press `Ctrl+C` in the terminal that runs `cider connect`. The connector closes the connection cleanly, stops the runtime, and exits. VMs that are running on the Mac keep running; Cider marks the node disconnected until you connect again.
+
+To remove the node from your organization, use the console or `cider nodes delete <id>`. Cider refuses while the node still has running servers or active sandboxes.
+
+## Connect several Macs
+
+Run `cider connect` on each Mac. Give each a distinct `--name` if two share a hostname. Pull the same `--image` on every node so snapshots and paused sandboxes restore anywhere. `--image` only applies the first time, before `cider-base` exists.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Run as a service" icon="repeat" href="/nodes/run-as-a-service">
+    Install a launchd job so the node reconnects after reboots.
+  </Card>
+  <Card title="Troubleshooting" icon="wrench" href="/nodes/troubleshooting">
+    What the common errors mean and how to fix them.
+  </Card>
+</CardGroup>

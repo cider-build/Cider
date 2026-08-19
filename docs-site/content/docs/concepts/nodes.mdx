@@ -1,0 +1,53 @@
+---
+title: Nodes
+description: A node is an Apple Silicon Mac that you connect to Cider. It runs the VMs for your sandboxes and servers.
+icon: Cpu
+---
+
+A node is a physical Apple Silicon Mac in your organization. You connect it with `cider connect`. From then on, Cider can create macOS VMs on it.
+
+Cider itself never runs your VMs on shared hosts. Every sandbox and server runs on one of your nodes.
+
+## What a node reports
+
+When a node connects, it reports its hardware to Cider:
+
+| Field | Example |
+| --- | --- |
+| `hardware_model` | `Mac15,12` |
+| `chip` | `Apple M3 Max` |
+| `macos_version` | `26.5` |
+| `cpu_count` | `16` |
+| `memory_bytes` | `137438953472` |
+| `storage_total_bytes` | `2000000000000` |
+| `storage_available_bytes` | `1200000000000` |
+| `base_vm_cpu_count`, `base_vm_memory_bytes`, `base_vm_disk_bytes` | The size of the base image on this node. |
+
+Cider uses these numbers to decide where to place VMs. See [Node capacity](/nodes/capacity).
+
+## Connected or not
+
+A node is **connected** while it holds a live connection to Cider. The console and `cider nodes` show this as `connected: true`. When the connection drops, the node's VMs keep running on the Mac, but Cider cannot reach them until the node reconnects. The connector reconnects on its own with a backoff of 1 second up to 60 seconds.
+
+## Two VMs per node
+
+Apple licenses macOS virtualization for at most two macOS guests per Apple Silicon host. Cider enforces this: a node holds at most two VMs across sandboxes and servers, including ones that are still provisioning. Pause a sandbox or stop a server to free a slot.
+
+## Names and enrollment
+
+Node names are unique in your organization. The default name is the Mac's hostname. If you run `cider connect` again on a Mac whose node is offline, Cider rotates the node's credential and keeps the same node ID. If the node is still connected, you get a `409` and a hint to disconnect it or choose another name.
+
+## Deleting a node
+
+Delete a node from the console or with `cider nodes delete <id>`. Cider refuses while the node has running or provisioning servers, or, if it is connected, active sandboxes. Otherwise it revokes the node's credential and disconnects it.
+
+## Learn more
+
+<CardGroup cols={2}>
+  <Card title="What is a node?" icon="cpu" href="/nodes/overview">
+    The three processes on a node and how they talk to Cider.
+  </Card>
+  <Card title="Connect a node" icon="plug" href="/nodes/connect">
+    Step by step, from a fresh Mac to a connected node.
+  </Card>
+</CardGroup>

@@ -1,0 +1,64 @@
+---
+title: Environment variables
+description: Every environment variable the cider CLI and the node runtime read.
+icon: Settings
+---
+
+## CLI
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CIDER_API_URL` | required | Base URL of the Cider API, for example `https://api.cider.build`. Overrides `apiUrl` in `~/.cider/config.json`. |
+| `CIDER_TOKEN` | from `~/.cider/config.json` | Bearer token. Use an API key here for scripts. Overrides the saved session; never written to disk. |
+| `CIDER_HOME` | `~/.cider` | Directory for config, node credentials, SSH keys, VM storage, and logs. |
+| `TERM` | `xterm-256color` | Terminal type sent to the guest by `cider ssh`. |
+
+## `cider connect`
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CIDER_IMAGE` | `macos-tahoe-cua:26.5.2` | Base image to pull. Same as `--image`. |
+| `CIDER_NODE_COMMAND` | `cider-node` | Path to the node runtime. Same as `--node-command`. |
+| `CIDER_NODE_PORT` | `8001` | Port the node runtime listens on (localhost only). |
+| `CIDER_NODE_URL` | `http://127.0.0.1:8001` | Where the connector reaches the runtime. |
+| `CIDER_SSH_USER` | `lume` | Guest user for SSH. Must match the base image. |
+| `CIDER_SSH_KEY` | `$CIDER_HOME/ssh_key` | Private key for guest SSH. Created on first run. |
+| `CIDER_SSH_PASSWORD` | unset | Password fallback for guest SSH. Set automatically for the default image. |
+
+The connector passes these to the node runtime, plus `CIDER_BASE_VM=cider-base`, `CIDER_BASE_IMAGE_ID_PATH`, `CIDER_VM_STORAGE=$CIDER_HOME/vms`, `CIDER_NODE_ID`, and `CIDER_NODE_TOKEN`.
+
+## Node runtime
+
+These are read by `cider-node`. You only set them if you run the runtime by hand.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `LUME` | `lume` | Path to the Lume binary. The connector itself finds `lume` on `PATH`. |
+| `CIDER_BASE_VM` | `base` | Name of the base VM to clone. The connector sets `cider-base`. |
+| `CIDER_VM_STORAGE` | `~/.cider/vms` | Lume storage directory. |
+| `CIDER_SANDBOX_PREFIX` | `cider-` | VM name prefix. |
+| `START_TIMEOUT_SECONDS` | `120` | How long to wait for a VM to boot and get an IP. |
+| `CIDER_GUEST_DIR` | `/Users/<ssh-user>/cider` | Where project archives are extracted in the guest. |
+| `CIDER_SNAPSHOT_CHUNK_SIZE` | `4194304` | Chunk size for portable exports, in bytes. |
+| `CIDER_API_URL`, `CIDER_NODE_ID`, `CIDER_NODE_TOKEN` | set by the connector | Needed to upload and download export chunks. |
+
+## Files
+
+| Path | Contents |
+| --- | --- |
+| `~/.cider/config.json` | `apiUrl` and `token`. Mode `0600`. |
+| `~/.cider/node.json` | Node `id`, `name`, and `token`. Mode `0600`. |
+| `~/.cider/ssh_key`, `~/.cider/ssh_key.pub` | ed25519 key pair for guest SSH. |
+| `~/.cider/vms/` | Lume storage. |
+| `~/.cider/cider-base.image-ref` | Pinned base image tag. |
+| `~/.cider/cider-base.image-id` | SHA-256 of the base disk. |
+| `~/.cider/logs/` | Connector logs when run as a service. |
+
+## Exit codes
+
+| Code | When |
+| --- | --- |
+| `0` | Success. `--help` and `--version`. `cider connect` stopped with Ctrl+C. |
+| `1` | Any error. The message prints to stderr as `cider: <message>`. |
+
+API errors print the response body, for example `cider: {"_tag":"NotFound","detail":"sandbox not found"}`.

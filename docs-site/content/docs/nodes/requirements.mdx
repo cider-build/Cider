@@ -1,0 +1,72 @@
+---
+title: Node requirements
+description: What a Mac needs before you connect it as a Cider node.
+icon: ListChecks
+---
+
+## Hardware and OS
+
+| Requirement | Detail |
+| --- | --- |
+| Mac | Apple Silicon (M1 or later). Intel Macs cannot run macOS guests with the Virtualization framework. `cider connect` refuses to run on anything but `darwin` `arm64`. |
+| macOS | macOS 15 Sequoia or later on the host. The default guest image is macOS 26. |
+| Memory | 16 GB minimum. 32 GB or more if you plan to run two VMs at once. Each VM reserves the memory you give it. |
+| Disk | At least 60 GB free for the base image plus room for each VM. A VM that grows its disk to 60 GB needs that much on the host. Cider reports free space to the control plane, and it only places VMs that fit. |
+| Network | Outbound HTTPS and WSS to Cider. No inbound ports. |
+
+## Software
+
+| Software | Why | Install |
+| --- | --- | --- |
+| Node.js 18.20 or later | Runs the CLI and connector. | `brew install node` |
+| Lume | Runs the VMs. `cider connect` checks `lume --version` before it pulls the base image. | See below. |
+| Python 3.11 or later | Runs the node runtime, `cider-node`. | Ships with the `cider-node` install. |
+| Git | Only needed on the machine where you run `cider open`. | Xcode Command Line Tools or Homebrew. |
+
+### Install Lume
+
+Lume is the macOS VM manager from the [cua](https://github.com/trycua/cua) project. Install it with the upstream script:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/lume/scripts/install.sh)"
+```
+
+The script puts `lume` in `~/.local/bin`. Make sure that directory is on your `PATH` in the environment where you run `cider connect`.
+
+Verify:
+
+```bash
+lume --version
+```
+
+### Install the node runtime
+
+```bash
+npm install -g @cider/cli
+cider --version
+```
+
+The CLI package includes the connector. The node runtime, `cider-node`, installs alongside it. If you build from source instead, see [Install the CLI](/cli/install#build-from-source).
+
+## Permissions
+
+The first time Lume boots a VM, macOS may prompt for local network access for the Lume helper. Allow it. Otherwise the runtime cannot reach the guest over SSH.
+
+If you run the node as a LaunchAgent (the default in [Run a node as a service](/nodes/run-as-a-service)), the user must stay logged in. To run without a logged-in session, use the `system` domain, which installs a LaunchDaemon.
+
+## Sleep and power
+
+A sleeping Mac disconnects. For an always-on node:
+
+- **System Settings → Energy** (or **Battery**): turn on **Prevent automatic sleeping when the display is off** and turn off **Put hard disks to sleep**.
+- On laptops, keep the lid open or attach an external display, or run `sudo pmset -a disablesleep 1`.
+- Turn on **Wake for network access**.
+
+## Checklist
+
+- [ ] Apple Silicon Mac on macOS 15 or later
+- [ ] 60 GB or more free on the volume that holds `~/.cider`
+- [ ] `lume --version` prints a version
+- [ ] `node --version` prints 18.20 or later
+- [ ] `cider --version` prints a version
+- [ ] Sleep is disabled if the node must stay online

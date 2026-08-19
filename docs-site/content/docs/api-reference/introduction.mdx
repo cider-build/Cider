@@ -1,0 +1,96 @@
+---
+title: API introduction
+description: The Cider REST API lets you manage sandboxes, servers, snapshots, and nodes from your own tools. Base URL, conventions, and a first request.
+icon: Code
+---
+
+The Cider API is a REST API over HTTPS. Everything you can do in the console, you can do with the API: create sandboxes and servers, pause and resume, take and restore snapshots, list nodes and their capacity, and read metrics.
+
+## Base URL
+
+```text
+https://api.cider.build
+```
+
+All paths on this reference are relative to that base. There is no version prefix.
+
+## Authentication
+
+Every request carries an API key in the `Authorization` header:
+
+```http
+Authorization: Bearer cider_live_2f9c…
+```
+
+Create keys in the console under **Settings → API keys**. See [Authentication](/api-reference/authentication).
+
+## Your first request
+
+```bash
+curl https://api.cider.build/nodes \
+  -H "Authorization: Bearer $CIDER_TOKEN"
+```
+
+```json
+{
+  "items": [
+    {
+      "id": "9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7",
+      "name": "studio-m2",
+      "connected": true,
+      "metadata": {
+        "hardware_model": "Mac15,12",
+        "chip": "Apple M3 Max",
+        "macos_version": "26.5",
+        "cpu_count": 16,
+        "memory_bytes": 137438953472,
+        "storage_total_bytes": 2000000000000,
+        "storage_available_bytes": 1200000000000,
+        "base_vm_cpu_count": 4,
+        "base_vm_memory_bytes": 8589934592,
+        "base_vm_disk_bytes": 53687091200
+      }
+    }
+  ],
+  "page": 1,
+  "pages": 1,
+  "total": 1
+}
+```
+
+## Conventions
+
+- **JSON everywhere.** Request bodies are `application/json` unless the endpoint says otherwise. `POST /sandboxes` takes `multipart/form-data` so you can upload a project archive.
+- **IDs** are 32 lowercase hexadecimal characters. Sandbox IDs carry a `cider-` prefix. Sandbox IDs are also the VM name on the node.
+- **Timestamps** are ISO 8601 in UTC, for example `2026-08-19T14:02:11.000Z`.
+- **Bytes** are integers. Memory and disk fields end in `_bytes`. 1 GiB = `1073741824`.
+- **Empty responses** are `204 No Content`.
+- **Endpoints without a body** (`pause`, `stop`, `start`, `retry`, `POST /sandboxes/{id}/snapshots`) take no request body. `POST /sandboxes/{id}/resume` and `POST /snapshots/{id}/restore` take a JSON object; send `{}` if you have nothing to pass.
+- **Long operations** return at once. `POST /servers` returns `provisioning`; poll `GET /servers/{id}` until `running` or `failed`.
+
+## Organization scope
+
+An API key belongs to one organization. Every resource you read or write is in that organization. There is no cross-organization access.
+
+## Rate limits and capacity
+
+The API itself is not rate limited for normal use. Capacity limits come from your nodes: each holds at most two VMs. When nothing fits you get `422` or `429` with a clear `detail`. See [Errors](/api-reference/errors).
+
+## OpenAPI
+
+The full specification is available as [`openapi.yaml`](/api-reference/openapi.yaml). Import it into your HTTP client or generate an SDK from it.
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/api-reference/authentication">
+    Create and use API keys.
+  </Card>
+  <Card title="Errors" icon="triangle-alert" href="/api-reference/errors">
+    Status codes and the error body.
+  </Card>
+  <Card title="Pagination" icon="list" href="/api-reference/pagination">
+    How list endpoints page.
+  </Card>
+  <Card title="Terminals" icon="terminal" href="/api-reference/terminals">
+    Interactive shells over WebSocket.
+  </Card>
+</CardGroup>

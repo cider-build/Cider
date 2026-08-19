@@ -1,0 +1,8 @@
+{
+  "title": "S S H",
+  "description": "Discover targets for interactive terminals.",
+  "pages": [
+    "listSshTargets",
+    "selectSshTarget"
+  ]
+}

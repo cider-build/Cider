@@ -1,0 +1,110 @@
+---
+title: cider sandboxes
+description: List, create, pause, resume, execute in, snapshot, and delete sandboxes.
+icon: Box
+---
+
+```bash
+cider sandboxes [list]
+cider sandboxes create
+cider sandboxes pause <id>
+cider sandboxes resume <id> [--node <node>]
+cider sandboxes exec <id> <command...>
+cider sandboxes snapshot <id>
+cider sandboxes delete <id>
+```
+
+## `list`
+
+The default subcommand. Prints one row per sandbox in your organization.
+
+```bash
+cider sandboxes
+```
+
+```text
+id                                      node_id                           status  created_at
+cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3  9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7  active  2026-08-19T14:02:11.000Z
+cider-b1d4e8f0a2c6479d8e3f5a7b9c0d1e2f  9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7  paused  2026-08-18T09:40:53.000Z
+```
+
+## `create`
+
+Creates an empty sandbox on any node with room and prints its ID. To create one from a project, use [`cider open`](/cli/commands/open).
+
+```bash
+cider sandboxes create
+```
+
+```text
+cider-7c2e9a1b5d3f4068a9b2c4d6e8f0a1b3
+```
+
+## `pause <id>`
+
+Exports the sandbox disk to Cider storage and deletes the VM, which frees a slot on the node. Only an `active` sandbox can be paused.
+
+```bash
+cider sandboxes pause cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+```
+
+```text
+cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3 paused
+```
+
+## `resume <id> [--node <node>]`
+
+Restores a paused sandbox onto a node with a free slot, then runs its `start` command. `--node` accepts a node name or ID and requires that node to be connected.
+
+```bash
+cider sandboxes resume cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3 --node studio-m2
+```
+
+```text
+cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3 resumed on 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+```
+
+## `exec <id> <command...>`
+
+Runs one command in the guest and prints its output. The sandbox must be `active`.
+
+```bash
+cider sandboxes exec cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3 "sw_vers -productVersion"
+```
+
+```text
+26.5
+```
+
+Pass the whole command as one quoted string. The CLI joins its arguments with a single space, so shell quoting inside the command is not preserved otherwise.
+
+## `snapshot <id>`
+
+Saves a portable snapshot of an `active` sandbox to Cider storage, then deletes the VM. The sandbox moves to `stopped`. Prints the snapshot ID.
+
+```bash
+cider sandboxes snapshot cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+```
+
+```text
+9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+```
+
+Restore it with [`cider snapshots restore`](/cli/commands/snapshots).
+
+## `delete <id>`
+
+Deletes the sandbox and its VM. For a paused sandbox, also discards its export. Prints nothing on success.
+
+```bash
+cider sandboxes delete cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+```
+
+## Errors
+
+| Message | Cause |
+| --- | --- |
+| `{"_tag":"NotFound","detail":"sandbox not found"}` | Wrong ID, or the sandbox belongs to another organization. |
+| `{"_tag":"Conflict","detail":"sandbox is paused; only a running sandbox can be paused"}` | State does not allow the operation. |
+| `{"_tag":"Conflict","detail":"snapshots require a running sandbox"}` | Resume first. |
+| `{"_tag":"TooManyRequests","detail":"every eligible node is at its VM capacity; stop something first"}` | No free slot for `resume` or `create`. |

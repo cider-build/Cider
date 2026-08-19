@@ -1,0 +1,9 @@
+{
+  "title": "Snapshots",
+  "description": "Portable, content-addressed exports of sandbox disks.",
+  "pages": [
+    "listSnapshots",
+    "deleteSnapshot",
+    "restoreSnapshot"
+  ]
+}

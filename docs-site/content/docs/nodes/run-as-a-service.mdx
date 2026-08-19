@@ -1,0 +1,122 @@
+---
+title: Run a node as a service
+description: Keep a node connected across logouts and reboots with a launchd job.
+icon: Repeat
+---
+
+`cider connect` is a foreground command. For a node that stays online, run it under launchd. Cider ships an installer script that writes the job, loads it, and verifies that the node comes online.
+
+## Prerequisites
+
+Run `cider connect` once interactively first. The installer expects the results of that run:
+
+- `~/.cider/config.json` (your login)
+- `~/.cider/ssh_key` and `~/.cider/ssh_key.pub`
+- `~/.cider/cider-base.image-id` and `~/.cider/vms/cider-base`
+- `lume` at `~/.local/bin/lume`
+- The `cider-node` runtime built in the checkout: `cd node && uv sync` creates `node/.venv/bin/cider-node`
+
+## Install the service
+
+The installer ships in the Cider repository and runs from a source checkout on the node:
+
+```bash
+git clone https://github.com/cider-build/Cider.git ~/cider-node/Cider
+cd ~/cider-node/Cider
+CIDER_API_URL=https://api.cider.build \
+CIDER_NODE_NAME=studio-m2 \
+CIDER_SSH_USER=lume \
+scripts/remote-node/install-connector.sh
+```
+
+Environment variables the installer reads:
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `CIDER_API_URL` | `http://127.0.0.1:8000` | The Cider API. Set it to `https://api.cider.build`. |
+| `CIDER_NODE_NAME` | unset | Passed as `--name`. When unset, the connector reuses the previous enrollment name, then the hostname. |
+| `CIDER_HOME` | `~/.cider` | Where the CLI keeps its files. |
+| `CIDER_SSH_USER` | `admin` | Guest user. Set `lume` for the default `macos-tahoe-cua` image. |
+| `CIDER_SSH_KEY` | `~/.cider/ssh_key` | Guest SSH key. |
+| `CIDER_LAUNCHD_DOMAIN` | `gui` | `gui` or `user` installs a LaunchAgent for the logged-in user. `system` installs a LaunchDaemon that runs without a login session (needs `sudo`). |
+
+The installer:
+
+1. Writes `~/Library/LaunchAgents/build.cider.connector.plist` (or `/Library/LaunchDaemons/build.cider.connector.plist` for `system`).
+2. Sets `RunAtLoad`, `KeepAlive`, and a 5-second throttle, so the job restarts if it exits.
+3. Points logs at `~/.cider/logs/connector.out.log` and `~/.cider/logs/connector.err.log`.
+4. Boots out any previous job, loads the new one, and kickstarts it.
+5. Waits up to 60 seconds for the runtime health check and for `GET /nodes` to show the node as connected.
+
+## Restart the service
+
+After you update the CLI or change environment variables:
+
+```bash
+launchctl kickstart -k "gui/$(id -u)/build.cider.connector"
+```
+
+For the `system` domain:
+
+```bash
+sudo launchctl kickstart -k system/build.cider.connector
+```
+
+You do not need to run the installer again for a restart. The installer is for the first install and for changes to the plist.
+
+## Check status
+
+```bash
+launchctl print "gui/$(id -u)/build.cider.connector" | head -20
+tail -f ~/.cider/logs/connector.out.log
+curl -fsS http://127.0.0.1:8001/health
+cider nodes
+```
+
+## Uninstall
+
+```bash
+launchctl bootout "gui/$(id -u)/build.cider.connector"
+rm ~/Library/LaunchAgents/build.cider.connector.plist
+```
+
+Then delete the node from the console or with `cider nodes delete <id>`.
+
+## Write the plist yourself
+
+If you prefer to manage launchd yourself, this is the shape of the job:
+
+```xml title="~/Library/LaunchAgents/build.cider.connector.plist"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>build.cider.connector</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cider</string>
+    <string>connect</string>
+    <string>--name</string><string>studio-m2</string>
+    <string>--yes</string>
+  </array>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/Users/you/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>CIDER_HOME</key><string>/Users/you/.cider</string>
+    <key>CIDER_API_URL</key><string>https://api.cider.build</string>
+    <key>LUME</key><string>/Users/you/.local/bin/lume</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>5</integer>
+  <key>StandardOutPath</key><string>/Users/you/.cider/logs/connector.out.log</string>
+  <key>StandardErrorPath</key><string>/Users/you/.cider/logs/connector.err.log</string>
+</dict>
+</plist>
+```
+
+Load it with `launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/build.cider.connector.plist`.
+
+<Note>
+  The runtime watches its parent process. If the connector exits, the runtime exits within 5 seconds so port 8001 is free for the next start.
+</Note>

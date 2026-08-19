@@ -1,0 +1,84 @@
+---
+title: What is a node?
+description: A node is an Apple Silicon Mac that runs macOS VMs for Cider. Learn the three processes on a node, how it reaches Cider without inbound ports, and how VMs run on it.
+icon: Cpu
+---
+
+A node is a physical Apple Silicon Mac that you connect to Cider. It runs the macOS VMs behind your sandboxes and servers. Cider is a control plane: it decides *what* to run and *where*, and it tells nodes to do it. Nodes do the actual virtualization.
+
+## Three processes on a node
+
+| Process | What it does |
+| --- | --- |
+| **Connector** (`cider connect`) | Enrolls the Mac in your organization, pulls the base image, starts the node runtime, and holds one outbound WebSocket connection to Cider. It proxies Cider's requests to the runtime and relays terminal sessions. |
+| **Node runtime** (`cider-node`) | A local service bound to `127.0.0.1:8001`. It clones, starts, stops, snapshots, and deletes VMs by calling Lume, and it runs commands in guests over SSH. It is never exposed to the network. |
+| **Lume** | The open source macOS VM manager from the [cua](https://github.com/trycua/cua) project. It uses Apple's Virtualization framework to run macOS guests. |
+
+You start all three with one command. `cider connect` spawns the runtime and manages Lume for you.
+
+## No inbound ports
+
+The connector dials **out** to Cider over HTTPS and WebSocket Secure (WSS). Cider never connects to your Mac. You do not open a firewall port, set up a tunnel, or give the Mac a public address.
+
+Cider sends requests to the node *through* that connection. Each request is a small JSON control frame followed by the body in binary chunks. The connector replays the request against the runtime on localhost and streams the response back the same way. Terminal sessions use the same connection to open a second, dedicated channel per session.
+
+```text
+  You / console / API
+          │
+          ▼
+  ┌──────────────┐   outbound WSS    ┌──────────────────────────────┐
+  │    Cider     │ ◄──────────────── │  connector (cider connect)   │
+  │ control plane│ ────────────────► │      │ localhost:8001        │
+  └──────────────┘   requests, ssh   │      ▼                       │
+                                     │  node runtime (cider-node)   │
+                                     │      │ lume clone/run/stop   │
+                                     │      ▼                       │
+                                     │  macOS VM   macOS VM         │
+                                     └──────────────────────────────┘
+                                              your Mac
+```
+
+## What happens when Cider creates a VM
+
+1. Cider picks a node with room. See [Node capacity](/nodes/capacity).
+2. Cider sends `POST /sandboxes` to the node runtime through the connector, with the requested CPU, memory, and disk, and the project archive if there is one.
+3. The runtime clones the base image, grows the clone to the requested size, and boots it headless.
+4. The runtime waits for the guest to get an IP address, copies the project in over SSH, and runs your `setup` and `start` commands in a login shell.
+5. Cider records the VM and starts sampling its metrics.
+
+The whole path is a few seconds for an empty sandbox. `setup` time depends on your commands.
+
+## Two VMs per node
+
+Apple licenses macOS virtualization for at most two macOS guests per host. Cider counts sandboxes and servers that hold a VM, plus VMs that are being created, and never asks a node for a third. Pausing a sandbox or stopping a server exports its disk to Cider storage and frees the slot.
+
+## Files on a node
+
+Everything Cider writes on a node lives under `~/.cider`:
+
+| Path | Contents |
+| --- | --- |
+| `~/.cider/config.json` | Your CLI login. |
+| `~/.cider/node.json` | The node's ID, name, and credential. Mode `0600`. |
+| `~/.cider/ssh_key`, `~/.cider/ssh_key.pub` | The key the runtime uses to SSH into guests. |
+| `~/.cider/vms/` | Lume storage. The base image is `cider-base/`. Each VM is `cider-<id>/`. |
+| `~/.cider/cider-base.image-ref` | The pinned base image tag, for example `macos-tahoe-cua:26.5.2`. |
+| `~/.cider/cider-base.image-id` | The SHA-256 of the base disk. Snapshots use it to check compatibility. |
+| `~/.cider/logs/` | Connector logs when you run the node as a service. |
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Requirements" icon="list-checks" href="/nodes/requirements">
+    Hardware, macOS version, Lume, and disk space.
+  </Card>
+  <Card title="Connect a node" icon="plug" href="/nodes/connect">
+    Run `cider connect` and watch the node come online.
+  </Card>
+  <Card title="Virtualization" icon="layers" href="/nodes/virtualization">
+    How Lume clones, sizes, boots, and reaches VMs.
+  </Card>
+  <Card title="Run as a service" icon="repeat" href="/nodes/run-as-a-service">
+    Keep the node connected with launchd.
+  </Card>
+</CardGroup>

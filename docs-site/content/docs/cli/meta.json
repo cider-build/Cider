@@ -1,0 +1,15 @@
+{
+  "title": "CLI",
+  "description": "The cider command",
+  "icon": "Terminal",
+  "root": true,
+  "pages": [
+    "install",
+    "authentication",
+    "cider-yaml",
+    "environment",
+    "---Commands---",
+    "...commands"
+  ],
+  "defaultOpen": false
+}

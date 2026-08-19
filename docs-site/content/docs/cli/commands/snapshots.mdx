@@ -1,0 +1,54 @@
+---
+title: cider snapshots
+description: List, restore, and delete portable snapshots.
+icon: Camera
+---
+
+```bash
+cider snapshots [list]
+cider snapshots restore <id> [--node <id>]
+cider snapshots delete <id>
+```
+
+## `list`
+
+The default subcommand.
+
+```bash
+cider snapshots
+```
+
+```text
+id                                source_sandbox_id                       created_at
+9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7  cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3  2026-08-19T14:30:02.000Z
+```
+
+## `restore <id> [--node <id>]`
+
+Restores the snapshot's source sandbox on a node and prints the sandbox ID. The source sandbox must be `stopped`. `--node` takes a node ID.
+
+```bash
+cider snapshots restore 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7 --node 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+```
+
+```text
+cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+```
+
+The target node must have the same base image as the node the snapshot was taken on. See [Snapshots](/concepts/snapshots#base-image-compatibility).
+
+## `delete <id>`
+
+Removes the snapshot. Prints nothing on success.
+
+```bash
+cider snapshots delete 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+```
+
+## Errors
+
+| Message | Cause |
+| --- | --- |
+| `{"_tag":"NotFound","detail":"snapshot not found"}` | Wrong ID. |
+| `{"_tag":"Conflict","detail":"sandbox is not stopped"}` | The source sandbox is `active` or `paused`. Only a `stopped` sandbox can be restored. |
+| An internal error | The node's base image differs from the snapshot's, or the restore failed on the node. Check the node log. See [Node troubleshooting](/nodes/troubleshooting). |

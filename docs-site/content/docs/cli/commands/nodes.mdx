@@ -1,0 +1,45 @@
+---
+title: cider nodes
+description: List and delete nodes.
+icon: Cpu
+---
+
+```bash
+cider nodes [list]
+cider nodes delete <id>
+```
+
+## `list`
+
+The default subcommand. Prints every node in your organization, across all pages.
+
+```bash
+cider nodes
+```
+
+```text
+id                                name        connected
+9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7  studio-m2   true
+1a2b3c4d5e6f708192a3b4c5d6e7f809  mini-lab    false
+```
+
+`connected` is live: it is `true` only while the node holds a connection to Cider.
+
+## `delete <id>`
+
+Removes the node and revokes its credential. If the node is connected, Cider disconnects it. Prints nothing on success.
+
+```bash
+cider nodes delete 1a2b3c4d5e6f708192a3b4c5d6e7f809
+```
+
+Cider refuses to delete a node that still has work on it:
+
+| Message | Fix |
+| --- | --- |
+| `{"_tag":"Conflict","detail":"node has running servers; stop or delete them first"}` | Stop or delete the servers on this node. |
+| `{"_tag":"Conflict","detail":"node has active sandboxes; delete them first"}` | Delete or pause the sandboxes. |
+
+## Add a node
+
+There is no `cider nodes add`. Run [`cider connect`](/cli/commands/connect) on the Mac itself.

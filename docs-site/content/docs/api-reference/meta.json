@@ -1,0 +1,16 @@
+{
+  "title": "API reference",
+  "description": "REST API with API keys",
+  "icon": "Code",
+  "root": true,
+  "pages": [
+    "introduction",
+    "authentication",
+    "errors",
+    "pagination",
+    "terminals",
+    "---Endpoints---",
+    "...endpoints"
+  ],
+  "defaultOpen": false
+}

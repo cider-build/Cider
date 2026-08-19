@@ -1,0 +1,107 @@
+---
+title: Quickstart
+description: Install the CLI, connect an Apple Silicon Mac as a node, and open a sandbox from a local project.
+icon: Rocket
+---
+
+This guide takes you from nothing to a shell inside a macOS VM. You need one Apple Silicon Mac to act as a node. The Mac you work from and the Mac that runs VMs can be the same machine.
+
+## Before you begin
+
+- A Cider account. Sign up at [app.cider.build](https://app.cider.build).
+- Node.js 18.20 or later on the machine where you install the CLI.
+- For the node: an Apple Silicon Mac, macOS 15 or later, [Lume](https://github.com/trycua/cua) installed, and at least 60 GB of free disk. See [Node requirements](/nodes/requirements).
+
+<Steps>
+  <Step title="Install the CLI">
+    ```bash
+    npm install -g @cider/cli
+    cider --version
+    ```
+
+    See [Install the CLI](/cli/install) for other install methods.
+  </Step>
+
+  <Step title="Connect a Mac as a node">
+    On the Mac that runs VMs:
+
+    ```bash
+    cider connect
+    ```
+
+    The first run asks for your Cider email and password. It downloads the macOS base image, a one-time download of several gigabytes. Then it enrolls the Mac in your organization and holds an outbound connection to Cider. Leave this command running. When it prints `Connected <name> to Cider`, the node appears in the console under **Nodes**.
+
+    To keep the node connected across logouts and reboots, see [Run a node as a service](/nodes/run-as-a-service).
+  </Step>
+
+  <Step title="Describe your project (optional)">
+    Add a `cider.yaml` to the root of your project so Cider prepares the sandbox for you:
+
+    ```yaml title="cider.yaml"
+    resources:
+      min_storage: 60GB
+
+    setup:
+      - brew install node
+      - npm install
+
+    start: npm run dev
+    ```
+
+    Cider runs `setup` once after upload and `start` in the background every time the sandbox boots. The default image has Git, Python 3, and Homebrew; install Node.js in `setup`. See [cider.yaml](/cli/cider-yaml).
+  </Step>
+
+  <Step title="Open a sandbox">
+    From another terminal, inside your project:
+
+    ```bash
+    cider open .
+    ```
+
+    The command prints the new sandbox ID:
+
+    ```text
+    cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+    ```
+  </Step>
+
+  <Step title="Get a shell">
+    ```bash
+    cider ssh cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+    ```
+
+    You get an interactive shell in the VM. Your project is at `~/cider/<project-name>`. Exit the shell with `exit` or `Ctrl+D`.
+
+    <Tip>
+      Chain the two steps: `cider ssh $(cider open .)`.
+    </Tip>
+  </Step>
+
+  <Step title="Pause, snapshot, or delete">
+    ```bash
+    cider sandboxes pause cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+    cider sandboxes resume cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+    cider sandboxes snapshot cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+    cider sandboxes delete cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+    ```
+
+    Pausing frees the VM slot on the node and keeps the disk in Cider storage. Snapshotting saves a portable copy that you can restore on any node with the same base image.
+  </Step>
+</Steps>
+
+## Where to go next
+
+<CardGroup cols={2}>
+  <Card title="Create a server" icon="server" href="/concepts/servers">
+    Long-lived machines with a size, preinstalled agents, and chat channels.
+  </Card>
+  <Card title="Use the API" icon="key" href="/api-reference/authentication">
+    Create an API key and automate everything you did above.
+  </Card>
+  <Card title="Node capacity" icon="gauge" href="/nodes/capacity">
+    How Cider decides which node runs a VM.
+  </Card>
+  <Card title="CLI reference" icon="terminal" href="/cli/commands/open">
+    Every command, flag, and environment variable.
+  </Card>
+</CardGroup>

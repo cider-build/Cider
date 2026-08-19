@@ -1,0 +1,91 @@
+---
+title: Virtualization on a node
+description: How Cider runs macOS VMs on a node with Lume and Apple's Virtualization framework. Base images, clones, sizing, boot, SSH access, terminals, snapshots, and cleanup.
+icon: Layers
+---
+
+Cider does not ship its own hypervisor. On every node it uses [Lume](https://github.com/trycua/cua), an open source macOS VM manager built on Apple's Virtualization framework. This page explains what the node runtime does with it.
+
+## Base image
+
+Every node keeps one base image, a Lume VM named `cider-base` in `~/.cider/vms`. `cider connect` pulls it with:
+
+```bash
+lume pull macos-tahoe-cua:26.5.2 cider-base --storage ~/.cider/vms
+```
+
+The default image is macOS 26 with Git, Python 3, and Homebrew. Base images never contain credentials; Cider injects secrets at boot. Cider records the tag in `~/.cider/cider-base.image-ref` and a SHA-256 of the disk in `~/.cider/cider-base.image-id`.
+
+Every VM on the node is a clone of this image. Keep the same tag on all nodes so that paused sandboxes, stopped servers, and snapshots restore on any of them.
+
+## Clone
+
+When Cider asks for a VM, the runtime clones the base image:
+
+```bash
+lume clone cider-base cider-<id> --source-storage ~/.cider/vms --dest-storage ~/.cider/vms
+```
+
+Lume clones are copy-on-write on APFS, so a clone is instant and takes almost no extra space until the guest writes to it.
+
+## Size
+
+If the request asks for more than the base image provides, the runtime resizes the clone before it boots:
+
+```bash
+lume set cider-<id> --cpu 6 --memory 16384MB --disk-size 81920MB --no-backup --storage ~/.cider/vms
+```
+
+Disks only grow. If the requested disk is not larger than the base image, the runtime skips the resize. Sandboxes inherit the base size unless `cider.yaml` sets `resources.min_storage`. Servers always carry an explicit size.
+
+## Boot
+
+```bash
+lume run --no-display cider-<id> --storage ~/.cider/vms
+```
+
+The runtime starts the VM headless in its own session and polls `lume ls` until the VM reports `running` and has an IP address, for up to 120 seconds. If boot fails, the runtime deletes the clone and reports the error to Cider. There are no half-created VMs.
+
+## Guest access
+
+The runtime reaches guests over SSH on the private network that Lume gives each VM. It uses the key in `~/.cider/ssh_key` and the guest user `lume`. Everything Cider does inside a VM (upload your project, run `setup` and `start`, `cider sandboxes exec`, measure disk usage, sample metrics) goes over that SSH connection.
+
+Your project lands in `~/cider/<project-name>` in the guest. `setup` commands run in a login `zsh` shell in that directory. `start` runs with `nohup` and logs to `/tmp/cider-start.log`.
+
+## Terminals
+
+The console terminal and `cider ssh` do not connect to the guest directly. The node runtime opens a real pseudo-terminal (PTY), runs `ssh -tt lume@<guest-ip>` in it, and streams bytes to and from a WebSocket. The connector relays that WebSocket to Cider over the node's outbound connection. The result is a full interactive shell in the browser or your terminal, without any inbound port on the node.
+
+The client sends one small JSON frame first, with the terminal type and size:
+
+```json
+{ "term": "xterm-256color", "resize": { "cols": 120, "rows": 40 } }
+```
+
+The node accepts `xterm`, `xterm-256color`, `screen`, `screen-256color`, `tmux`, `tmux-256color`, `vt100`, and `ansi`. Resize frames can follow at any time.
+
+## Metrics
+
+Every 30 seconds Cider asks the node for each running VM's CPU, memory, and graphics memory. The runtime gathers them inside the guest with `top`, `memory_pressure`, and `ioreg`. Disk usage comes from `diskutil` on the guest's APFS container.
+
+## Exports, pause, and snapshots
+
+Pausing a sandbox, stopping a server, and taking a snapshot all produce the same thing: a portable export.
+
+1. The runtime runs `sync` in the guest and stops the VM.
+2. It compares the VM disk with the base image in 4 MiB chunks.
+3. Each chunk that differs is compressed, hashed with SHA-256, and uploaded to Cider storage. Chunks that already exist are skipped.
+4. It writes a manifest that lists the chunks and the base image digest.
+5. It deletes the VM, which frees the slot on the node.
+
+Restore is the reverse: clone the base image, check that its digest matches the manifest, download and write each chunk at its offset, `fsync`, boot. Because only changed chunks move, exports of lightly-used VMs are fast.
+
+## Cleanup
+
+Cider reconciles nodes every 10 seconds. It compares the VMs a node reports with the sandboxes and servers it knows about. VMs that no record claims are deleted. Records whose VM disappeared are marked accordingly (`failed` for servers, deleted for sandboxes). Sandboxes past their time to live are deleted every 5 seconds.
+
+If you delete a VM by hand with `lume delete`, Cider notices within a few seconds and updates the resource.
+
+## Two guests per host
+
+Apple's Virtualization framework allows two macOS guests per host at a time. Cider never asks a node for a third. The limit counts sandboxes, servers, and VMs in the middle of creation.

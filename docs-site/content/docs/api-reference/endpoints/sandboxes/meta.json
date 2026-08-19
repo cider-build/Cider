@@ -1,0 +1,14 @@
+{
+  "title": "Sandboxes",
+  "description": "Short-lived macOS VMs created from your project or empty.",
+  "pages": [
+    "listSandboxes",
+    "createSandbox",
+    "getSandbox",
+    "deleteSandbox",
+    "executeInSandbox",
+    "pauseSandbox",
+    "resumeSandbox",
+    "snapshotSandbox"
+  ]
+}

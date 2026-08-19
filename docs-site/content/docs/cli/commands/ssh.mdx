@@ -1,0 +1,82 @@
+---
+title: cider ssh
+description: Open an interactive shell in a sandbox or a running server.
+icon: Terminal
+---
+
+```bash
+cider ssh [target] [-l | --list] [-n | --new [node]]
+```
+
+Opens an interactive terminal in a sandbox or a running server. The session travels through Cider and the node's outbound connection, so it works from anywhere the CLI can reach the API. No inbound port on the node is needed.
+
+## Arguments and flags
+
+| Name | Meaning |
+| --- | --- |
+| `target` | A sandbox ID (`cider-…`) or a server name. |
+| `-l`, `--list` | List the sandboxes and servers you can connect to, then exit. Cannot be combined with `target` or `--new`. |
+| `-n`, `--new [node]` | Create an empty sandbox, print its ID, then connect. Optionally pin a node by name or ID. Cannot be combined with `target`. |
+
+## Examples
+
+List what you can reach:
+
+```bash
+cider ssh --list
+```
+
+```text
+sandbox_id                              server_name  node_name  status
+cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3  -            studio-m2  active
+cider-b1d4e8f0a2c6479d8e3f5a7b9c0d1e2f  api-staging  studio-m2  running
+```
+
+Connect to a sandbox:
+
+```bash
+cider ssh cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+```
+
+```text
+Connecting to cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3 on studio-m2
+lume@cider-3f9a1c7d ~ %
+```
+
+Connect to a server by name:
+
+```bash
+cider ssh api-staging
+```
+
+Create a sandbox on a specific node and connect:
+
+```bash
+cider ssh --new studio-m2
+```
+
+```text
+cider-7c2e9a1b5d3f4068a9b2c4d6e8f0a1b3
+Connecting to cider-7c2e9a1b5d3f4068a9b2c4d6e8f0a1b3 on studio-m2
+```
+
+## Behavior
+
+- Your terminal is put in raw mode. Ctrl+C goes to the remote shell, as it would with `ssh`.
+- The CLI sends your `TERM` and window size on connect and again on every resize.
+- End the session with `exit` or Ctrl+D. Closing stdin sends an end-of-transmission byte, then closes the connection after output drains.
+- The status line `Connecting to …` goes to stderr. Terminal output goes to stdout.
+
+## Errors
+
+| Message | Cause |
+| --- | --- |
+| `"X" is not an available sandbox or running server` | The target does not exist, is not `active`/`running`, or its node is offline. |
+| `SSH tunnel rejected (HTTP 401)` | Your session expired. Log in again or set `CIDER_TOKEN`. |
+| `node "X" not found` / `node "X" is not connected` | The node you passed to `--new` is unknown or offline. |
+| `--list cannot be combined with a sandbox or --new` | Use one mode at a time. |
+
+## Related
+
+- [`cider open`](/cli/commands/open) to create a sandbox from your project.
+- [Terminals over WebSocket](/api-reference/terminals) for the protocol the CLI uses.
