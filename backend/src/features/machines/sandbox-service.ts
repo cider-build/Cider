@@ -15,7 +15,7 @@ import { conflict, type MachineError, MachineOperationFailed } from "./errors.ts
 import type { ParsedLaunchArchive } from "./launch-archive.ts";
 import { MachineLifecycle } from "./lifecycle.ts";
 import { MachinePersistence } from "./persistence.ts";
-import { SnapshotStore } from "./snapshot-store.ts";
+import { manifestSize, SnapshotStore } from "./snapshot-store.ts";
 
 const pauseKey = (id: SandboxId) => `pause-${id}`;
 
@@ -222,6 +222,7 @@ export class SandboxService extends Context.Service<
           sourceSandboxId: id,
           organizationId,
           launchConfiguration: sandbox.launch_config,
+          sizeBytes: manifestSize(manifest),
         }).pipe(
           Effect.tapError(() => snapshots.discard(organizationId, snapshotId).pipe(Effect.ignore)),
         );

@@ -1,8 +1,10 @@
+import { NodeHttpClient } from "@effect/platform-node";
 import { Layer } from "effect";
 
 import { RequestAuthorization } from "../auth/access.ts";
 import { DatabaseLive } from "../database/live.ts";
 import { IdGenerator } from "../services/id-generator.ts";
+import { ObjectStore } from "../services/object-store.ts";
 import {
   NodeGatewayLive,
   NodeRuntimeLive,
@@ -25,6 +27,8 @@ import {
 } from "./workers/index.ts";
 
 const FoundationLive = Layer.mergeAll(DatabaseLive, IdGenerator.layer);
+
+const ObjectStoreLive = ObjectStore.layer.pipe(Layer.provide(NodeHttpClient.layerUndici));
 
 const AuthorizationLive = RequestAuthorization.layer.pipe(
   Layer.provide(DatabaseLive),
@@ -61,13 +65,12 @@ const MachinesLive = MachineServicesLive.pipe(
       TransportLive,
       WarmPoolServiceLive,
       InFlightLive,
+      ObjectStoreLive,
     ),
   ),
 );
 
-const NodeStorageLive = NodeStorageServiceLive.pipe(
-  Layer.provide(IdGenerator.layer),
-);
+const NodeStorageLive = NodeStorageServiceLive.pipe(Layer.provide(ObjectStoreLive));
 
 const WaitlistLive = WaitlistServiceLive.pipe(
   Layer.provide(
