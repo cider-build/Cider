@@ -24,7 +24,6 @@ icon: Settings
 | `CIDER_SSH_USER` | `lume` | Guest user for SSH. Must match the base image. |
 | `CIDER_SSH_KEY` | `$CIDER_HOME/ssh_key` | Private key for guest SSH. Created on first run. |
 | `CIDER_SSH_PASSWORD` | unset | Password fallback for guest SSH. Set automatically for the default image. |
-| `LUME` | `lume` | Path to the Lume binary. |
 
 The connector passes these to the node runtime, plus `CIDER_BASE_VM=cider-base`, `CIDER_BASE_IMAGE_ID_PATH`, `CIDER_VM_STORAGE=$CIDER_HOME/vms`, `CIDER_NODE_ID`, and `CIDER_NODE_TOKEN`.
 
@@ -34,6 +33,7 @@ These are read by `cider-node`. You only set them if you run the runtime by hand
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
+| `LUME` | `lume` | Path to the Lume binary. The connector itself finds `lume` on `PATH`. |
 | `CIDER_BASE_VM` | `base` | Name of the base VM to clone. The connector sets `cider-base`. |
 | `CIDER_VM_STORAGE` | `~/.cider/vms` | Lume storage directory. |
 | `CIDER_SANDBOX_PREFIX` | `cider-` | VM name prefix. |

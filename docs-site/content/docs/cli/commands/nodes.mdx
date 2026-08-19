@@ -37,8 +37,8 @@ Cider refuses to delete a node that still has work on it:
 
 | Message | Fix |
 | --- | --- |
-| `{"detail":"node has running servers; stop or delete them first"}` | Stop or delete the servers on this node. |
-| `{"detail":"node has active sandboxes; delete them first"}` | Delete or pause the sandboxes. |
+| `{"_tag":"Conflict","detail":"node has running servers; stop or delete them first"}` | Stop or delete the servers on this node. |
+| `{"_tag":"Conflict","detail":"node has active sandboxes; delete them first"}` | Delete or pause the sandboxes. |
 
 ## Add a node
 

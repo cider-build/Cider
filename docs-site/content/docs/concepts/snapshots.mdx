@@ -26,14 +26,14 @@ Or `POST /snapshots/{id}/restore` with an optional `node_id`. Cider clones the b
 
 ## Base image compatibility
 
-A snapshot records the SHA-256 of the base disk image it was taken from. Restore only works on a node whose `cider-base` image has the same digest. Cider checks this before it writes any block and reports a clear error otherwise:
+A snapshot records the SHA-256 of the base disk image it was taken from. Restore only works on a node whose `cider-base` image has the same digest. The node checks this before it writes any block. If the digests differ, the restore fails and the node log records:
 
 ```text
 snapshot requires base image 3a1f…, but this node has 8c42…
 ```
 
 <Tip>
-  Keep every node in your organization on the same pinned image tag. `cider connect` pins `macos-tahoe-cua:26.5.2` by default. Pass the same `--image` on every node.
+  Keep every node in your organization on the same pinned image tag. `cider connect` pins `macos-tahoe-cua:26.5.2` by default. Pass the same `--image` on every node the first time you connect it. `--image` has no effect once `cider-base` exists.
 </Tip>
 
 ## Pause uses the same mechanism
@@ -50,4 +50,4 @@ Pausing a sandbox and stopping a server both write the same kind of export to Ci
 cider snapshots delete 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
 ```
 
-Deleting a snapshot removes its manifest. Blocks that no other snapshot references are reclaimed by Cider storage.
+Deleting a snapshot removes its manifest. The stored blocks stay in Cider storage, where other snapshots and paused sandboxes can share them.

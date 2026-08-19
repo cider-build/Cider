@@ -21,7 +21,7 @@ The guest user is `lume`. Homebrew is installed but is not on the `PATH` of non-
 
 A sandbox inherits the CPU, memory, and disk of the base image unless `cider.yaml` asks for more disk with `resources.min_storage`. The node reports the size the VM really got. The disk never shrinks below the base image size.
 
-Cider records `cpu_count`, `memory_bytes`, and `storage_bytes` on every sandbox, and it measures `storage_used_bytes` inside the guest after creation and every time it reconciles.
+Cider records `cpu_count`, `memory_bytes`, and `storage_bytes` on every sandbox, and it measures `storage_used_bytes` inside the guest after creation, pause, and snapshot.
 
 ## States
 
@@ -48,7 +48,7 @@ If a pause fails, the sandbox returns to `active`. If a resume fails, it returns
 
 ## Time to live
 
-Sandboxes are meant to be short-lived. An `active` sandbox that is older than the organization's time to live (TTL) is deleted by a background job. Resuming a paused sandbox or restoring a snapshot resets the sandbox's `created_at`, which restarts the TTL clock.
+Sandboxes are meant to be short-lived. A background job deletes any `active` sandbox that is older than the sandbox time to live (TTL). Resuming a paused sandbox or restoring a snapshot resets the sandbox's `created_at`, which restarts the TTL clock.
 
 <Note>
   Pausing a sandbox stops the TTL clock. A paused sandbox stays in Cider storage until you resume or delete it.
@@ -60,14 +60,18 @@ Sandboxes are meant to be short-lived. An `active` sandbox that is older than th
 
 Cider only stores the blocks that differ from the base image, so a pause of a lightly-used sandbox is fast and small.
 
+<Note>
+  Pause and snapshot compare the sandbox disk with the base image block by block. A sandbox whose disk grew past the base image size, through `resources.min_storage`, cannot be paused or snapshotted yet.
+</Note>
+
 ## Snapshots
 
 `cider sandboxes snapshot <id>` saves a portable snapshot and moves the sandbox to `stopped`. You can restore a snapshot as many times as you like, on any node whose base image matches. See [Snapshots](/concepts/snapshots).
 
 ## Execute without a shell
 
-`cider sandboxes exec <id> <command>` and `POST /sandboxes/{id}/execute` run one command in the guest and return its output. This is the simplest way to script a sandbox.
+`cider sandboxes exec <id> <command>` and `POST /sandboxes/{id}/execute` run one command in the guest over SSH and return its standard output. The command runs in a non-login shell, so call Homebrew tools by full path or through `zsh -lc`. This is the most direct way to script a sandbox.
 
 ## Where sandboxes live
 
-Cider places each sandbox on a connected node in your organization. You can pin a node with `--node` on the CLI or `node_id` in the API. Otherwise Cider picks the first node, in name order, that has enough free storage and a free VM slot. See [Node capacity](/nodes/capacity).
+Cider places each sandbox on a connected node in your organization. You can pin a node with `cider ssh --new <node>` on the CLI or `node_id` in the API. Otherwise Cider picks the first node, in name order, that has enough free storage and a free VM slot. See [Node capacity](/nodes/capacity).

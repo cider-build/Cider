@@ -46,7 +46,7 @@ Pick a preset or set `cpu_count`, `memory_bytes`, and `storage_bytes` yourself. 
 | `setup` | string or string[] | none | Commands that run once, in order, after software installs. |
 | `start` | string | none | A command that runs in the background on every boot. Output goes to `/tmp/cider-start.log`. |
 
-Channel secrets come from `env`: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN`.
+Channel secrets come from `env`: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `SLACK_APP_TOKEN`, and `SLACK_BOT_TOKEN`.
 
 <Note>
   Xcode ships as its own base image and is not available yet. Requesting `xcode` in `software` returns `422`.
@@ -60,15 +60,18 @@ Channel secrets come from `env`: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `SLA
 | `running` | The VM runs on a node. You can open a terminal or SSH in. |
 | `stopping` | Cider exports the disk to Cider storage and deletes the VM. |
 | `stopped` | The disk lives in Cider storage. The node slot is free. |
-| `failed` | Provisioning or a start did not finish. `status_detail` explains why. |
+| `failed` | Provisioning did not finish, or the node lost the VM. `status_detail` explains why. |
 
 ```text
 POST /servers ──► provisioning ──► running
                               └──► failed        (status_detail set)
 running ── stop ──► stopping ──► stopped
 stopped ── start ──► provisioning ──► running   (any node with a free slot)
+                                 └──► stopped   (start failed; status_detail set)
 failed  ── retry ──► stopped | provisioning
 ```
+
+If a start fails, the server returns to `stopped` and `status_detail` starts with `start failed:`. Start it again, or check the node.
 
 ## Stop and start
 

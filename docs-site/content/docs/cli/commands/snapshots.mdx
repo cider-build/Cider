@@ -49,6 +49,6 @@ cider snapshots delete 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
 
 | Message | Cause |
 | --- | --- |
-| `{"detail":"snapshot not found"}` | Wrong ID. |
-| `{"detail":"sandbox is not stopped"}` | The source sandbox is `active` or `paused`. Only a `stopped` sandbox can be restored. |
-| `{"detail":"snapshot requires base image …"}` | The node's base image differs. Pull the same tag. |
+| `{"_tag":"NotFound","detail":"snapshot not found"}` | Wrong ID. |
+| `{"_tag":"Conflict","detail":"sandbox is not stopped"}` | The source sandbox is `active` or `paused`. Only a `stopped` sandbox can be restored. |
+| An internal error | The node's base image differs from the snapshot's, or the restore failed on the node. Check the node log. See [Node troubleshooting](/nodes/troubleshooting). |

@@ -19,7 +19,7 @@ icon: ListChecks
 | Software | Why | Install |
 | --- | --- | --- |
 | Node.js 18.20 or later | Runs the CLI and connector. | `brew install node` |
-| Lume | Runs the VMs. The CLI checks `lume --version` before it does anything else. | See below. |
+| Lume | Runs the VMs. `cider connect` checks `lume --version` before it pulls the base image. | See below. |
 | Python 3.11 or later | Runs the node runtime, `cider-node`. | Ships with the `cider-node` install. |
 | Git | Only needed on the machine where you run `cider open`. | Xcode Command Line Tools or Homebrew. |
 
@@ -31,7 +31,7 @@ Lume is the macOS VM manager from the [cua](https://github.com/trycua/cua) proje
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/lume/scripts/install.sh)"
 ```
 
-The script puts `lume` in `~/.local/bin`. Make sure that directory is on your `PATH`, or set `LUME=$HOME/.local/bin/lume` in the environment where you run `cider connect`.
+The script puts `lume` in `~/.local/bin`. Make sure that directory is on your `PATH` in the environment where you run `cider connect`.
 
 Verify:
 

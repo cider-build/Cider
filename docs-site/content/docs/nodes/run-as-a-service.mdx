@@ -14,24 +14,29 @@ Run `cider connect` once interactively first. The installer expects the results 
 - `~/.cider/ssh_key` and `~/.cider/ssh_key.pub`
 - `~/.cider/cider-base.image-id` and `~/.cider/vms/cider-base`
 - `lume` at `~/.local/bin/lume`
-- The `cider-node` runtime on disk
+- The `cider-node` runtime built in the checkout: `cd node && uv sync` creates `node/.venv/bin/cider-node`
 
 ## Install the service
 
+The installer ships in the Cider repository and runs from a source checkout on the node:
+
 ```bash
+git clone https://github.com/cider-build/Cider.git ~/cider-node/Cider
+cd ~/cider-node/Cider
 CIDER_API_URL=https://api.cider.build \
 CIDER_NODE_NAME=studio-m2 \
-cider-install-connector
+CIDER_SSH_USER=lume \
+scripts/remote-node/install-connector.sh
 ```
 
 Environment variables the installer reads:
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
-| `CIDER_API_URL` | required | The Cider API. |
-| `CIDER_NODE_NAME` | hostname | Passed as `--name`. |
+| `CIDER_API_URL` | `http://127.0.0.1:8000` | The Cider API. Set it to `https://api.cider.build`. |
+| `CIDER_NODE_NAME` | unset | Passed as `--name`. When unset, the connector reuses the previous enrollment name, then the hostname. |
 | `CIDER_HOME` | `~/.cider` | Where the CLI keeps its files. |
-| `CIDER_SSH_USER` | `lume` | Guest user. |
+| `CIDER_SSH_USER` | `admin` | Guest user. Set `lume` for the default `macos-tahoe-cua` image. |
 | `CIDER_SSH_KEY` | `~/.cider/ssh_key` | Guest SSH key. |
 | `CIDER_LAUNCHD_DOMAIN` | `gui` | `gui` or `user` installs a LaunchAgent for the logged-in user. `system` installs a LaunchDaemon that runs without a login session (needs `sudo`). |
 
@@ -57,7 +62,7 @@ For the `system` domain:
 sudo launchctl kickstart -k system/build.cider.connector
 ```
 
-You do not need to run the installer again for a restart.
+You do not need to run the installer again for a restart. The installer is for the first install and for changes to the plist.
 
 ## Check status
 

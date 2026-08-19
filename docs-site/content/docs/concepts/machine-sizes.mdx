@@ -29,7 +29,7 @@ The console lets you choose from these values. The API accepts any positive inte
 
 `storage_bytes` is the disk the VM gets. It must be at least the base image disk size on the node (about 50 GiB for the default image) and at most the node's free storage. Cider grows the disk when it clones the base image. It never shrinks a disk.
 
-Sandboxes do not take a size. They inherit the base image size, plus any extra disk that `cider.yaml` requests with `resources.min_storage`.
+Sandboxes do not take a size. They inherit the base image size, plus any extra disk that `cider.yaml` requests with `resources.min_storage`. A sandbox with a grown disk cannot be paused or snapshotted yet.
 
 ## Fit
 

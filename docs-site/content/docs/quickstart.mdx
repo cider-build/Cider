@@ -29,7 +29,7 @@ This guide takes you from nothing to a shell inside a macOS VM. You need one App
     cider connect
     ```
 
-    The first run asks for your Cider email and password, downloads the macOS base image (a one-time download of several gigabytes), enrolls the Mac in your organization, and holds an outbound connection to Cider. Leave this command running. When it prints `Connected <name> to Cider`, the node appears in the console under **Nodes**.
+    The first run asks for your Cider email and password. It downloads the macOS base image, a one-time download of several gigabytes. Then it enrolls the Mac in your organization and holds an outbound connection to Cider. Leave this command running. When it prints `Connected <name> to Cider`, the node appears in the console under **Nodes**.
 
     To keep the node connected across logouts and reboots, see [Run a node as a service](/nodes/run-as-a-service).
   </Step>
@@ -42,12 +42,13 @@ This guide takes you from nothing to a shell inside a macOS VM. You need one App
       min_storage: 60GB
 
     setup:
+      - brew install node
       - npm install
 
     start: npm run dev
     ```
 
-    Cider runs `setup` once after upload and `start` in the background every time the sandbox boots. See [cider.yaml](/cli/cider-yaml).
+    Cider runs `setup` once after upload and `start` in the background every time the sandbox boots. The default image has Git, Python 3, and Homebrew; install Node.js in `setup`. See [cider.yaml](/cli/cider-yaml).
   </Step>
 
   <Step title="Open a sandbox">

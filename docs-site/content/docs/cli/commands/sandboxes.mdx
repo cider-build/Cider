@@ -66,7 +66,7 @@ cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3 resumed on 9f2c1e0a4b5d6e7f8091a2b3c4d5e6
 
 ## `exec <id> <command...>`
 
-Runs one command in the guest and prints its output. The sandbox must be `active` or `paused` (a paused sandbox is not reachable; wait for `active`).
+Runs one command in the guest and prints its output. The sandbox must be `active`.
 
 ```bash
 cider sandboxes exec cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3 "sw_vers -productVersion"
@@ -104,7 +104,7 @@ cider sandboxes delete cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
 
 | Message | Cause |
 | --- | --- |
-| `{"detail":"sandbox not found"}` | Wrong ID, or the sandbox belongs to another organization. |
-| `{"detail":"sandbox is paused; only a running sandbox can be paused"}` | State does not allow the operation. |
-| `{"detail":"snapshots require a running sandbox"}` | Resume first. |
-| `{"detail":"every eligible node is at its VM capacity; stop something first"}` | No free slot for `resume` or `create`. |
+| `{"_tag":"NotFound","detail":"sandbox not found"}` | Wrong ID, or the sandbox belongs to another organization. |
+| `{"_tag":"Conflict","detail":"sandbox is paused; only a running sandbox can be paused"}` | State does not allow the operation. |
+| `{"_tag":"Conflict","detail":"snapshots require a running sandbox"}` | Resume first. |
+| `{"_tag":"TooManyRequests","detail":"every eligible node is at its VM capacity; stop something first"}` | No free slot for `resume` or `create`. |

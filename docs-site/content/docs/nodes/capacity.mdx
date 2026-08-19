@@ -28,11 +28,11 @@ Cider takes the first node that passes all three. Reservations are serialized, s
 
 ## What sandboxes ask for
 
-A sandbox created with `cider open` asks for the base image size, plus `resources.min_storage` from `cider.yaml` if it is larger. A sandbox created empty asks for the base image size. Resume asks for the size the sandbox had.
+A sandbox created with `cider open` asks for the base image size, plus `resources.min_storage` from `cider.yaml` if it is larger. A sandbox created empty asks for the base image size. Resume and snapshot restore only ask for a free slot; the disk comes back at the size the sandbox had.
 
 ## What servers ask for
 
-Servers carry their `size`. See [Machine sizes](/concepts/machine-sizes). Start and retry ask for the same size again.
+Servers carry their `size`. See [Machine sizes](/concepts/machine-sizes). Start asks for a free slot when it restores from an export. Retry provisions again on the server's current node.
 
 ## Errors
 

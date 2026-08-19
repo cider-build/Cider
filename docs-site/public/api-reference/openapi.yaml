@@ -159,8 +159,10 @@ paths:
       tags:
       - Sandboxes
       summary: Execute a command
-      description: Runs one command in the guest as the `lume` user in a login shell and returns its combined
-        output. The sandbox must be `active`.
+      description: |
+        Runs one command in the guest as the `lume` user over SSH and returns its standard output.
+        The command runs in a non-login shell; use `/opt/homebrew/bin/brew` or `zsh -lc` for Homebrew tools.
+        A command that exits non-zero fails the request. The sandbox must be `active`.
       operationId: executeInSandbox
       requestBody:
         required: true
@@ -1303,6 +1305,7 @@ components:
         org_id: 7e2f0a4b8c3d1e5f9a6b2c4d8e0f1a3b
         launch_config:
           setup:
+          - brew install node
           - npm install
           start: npm run dev
         created_at: '2026-08-19T14:30:02.000Z'

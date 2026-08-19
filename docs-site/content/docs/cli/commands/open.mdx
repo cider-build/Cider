@@ -65,10 +65,10 @@ cider open . --include-ignored
 | Message | Cause |
 | --- | --- |
 | `cider: Command failed: git -C … ls-files …` | `path` is not inside a Git worktree. |
-| `{"detail":"no connected nodes"}` | Your organization has no connected node. Run `cider connect`. |
-| `{"detail":"no connected node offers …"}` | `resources.min_storage` is larger than any node's free storage. |
-| `{"detail":"every eligible node is at its VM capacity; stop something first"}` | Pause a sandbox or stop a server. |
-| `{"detail":"cider.yaml has an invalid launch configuration"}` | Fix the file. See [cider.yaml](/cli/cider-yaml). |
+| `{"_tag":"NotFound","detail":"no connected nodes"}` | Your organization has no connected node. Run `cider connect`. |
+| `{"_tag":"UnprocessableContent","detail":"no connected node offers …"}` | `resources.min_storage` is larger than any node's free storage. |
+| `{"_tag":"TooManyRequests","detail":"every eligible node is at its VM capacity; stop something first"}` | Pause a sandbox or stop a server. |
+| `{"_tag":"UnprocessableContent","detail":"cider.yaml has an invalid launch configuration"}` | Fix the file. See [cider.yaml](/cli/cider-yaml). |
 
 ## Related
 

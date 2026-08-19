@@ -10,7 +10,7 @@ You ran `cider connect` on an Intel Mac, on Linux, or under Rosetta. Use an Appl
 
 ## `lume: command not found` or `Lume is not installed`
 
-Install Lume (see [Node requirements](/nodes/requirements#install-lume)) and make sure `~/.local/bin` is on your `PATH`, or set `LUME=$HOME/.local/bin/lume`. When you run the node as a service, put `LUME` and `PATH` in the job's environment.
+Install Lume (see [Node requirements](/nodes/requirements#install-lume)) and make sure `~/.local/bin` is on your `PATH`. The connector finds `lume` on `PATH`; the node runtime also honors `LUME=$HOME/.local/bin/lume`. When you run the node as a service, put both `PATH` and `LUME` in the job's environment. A missing binary shows as `spawn lume ENOENT` in the connector output.
 
 ## `Cider base VM installation declined`
 
@@ -50,7 +50,7 @@ The WebSocket dropped. The connector reconnects with backoff. If this repeats, c
 
 ## `snapshot requires base image X, but this node has Y`
 
-The node's `cider-base` differs from the one the snapshot was taken on. Pull the same tag with `cider connect --image <name:tag>` on both nodes. Cider pins `macos-tahoe-cua:26.5.2` by default.
+This message appears in the node log when the node's `cider-base` differs from the one the snapshot was taken on; the restore fails. Put every node on the same tag: delete `~/.cider/vms/cider-base`, `~/.cider/cider-base.image-ref`, and `~/.cider/cider-base.image-id` on the odd node, then run `cider connect --image <name:tag>` with the tag the other nodes use. Cider pins `macos-tahoe-cua:26.5.2` by default.
 
 ## `every eligible node is at its VM capacity`
 

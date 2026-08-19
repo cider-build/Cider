@@ -43,9 +43,8 @@ Check [Node requirements](/nodes/requirements). In short: Apple Silicon, macOS 1
 
   <Step title="Approve the base image download">
     ```text
-    Cider base VM "cider-base" is not installed in /Users/you/.cider/vms.
+    Cider base VM "cider-base" is not installed in /Users/you/.cider/vms. Create it now? [y/N] y
     Installing macos-tahoe-cua:26.5.2 as cider-base. This is a large one-time download.
-    Create it now? [y/N] y
     ```
 
     Lume pulls the image into `~/.cider/vms/cider-base`. Progress prints as it downloads. The image is several gigabytes; on a fast connection this takes a few minutes. Pass `--yes` to skip the prompt.
@@ -54,7 +53,6 @@ Check [Node requirements](/nodes/requirements). In short: Apple Silicon, macOS 1
 
     ```text
     Identifying the Cider base image for portable snapshots...
-    Base VM ready: /Users/you/.cider/vms/cider-base
     ```
   </Step>
 
@@ -74,7 +72,11 @@ Check [Node requirements](/nodes/requirements). In short: Apple Silicon, macOS 1
     cider: a node named "studio-m2" is already connected; disconnect it, pass --name, or retry in a minute if it just went offline
     ```
 
-    If the node exists but is offline, Cider rotates its credential and reuses the same node ID.
+    If the node exists but is offline, Cider rotates its credential and reuses the same node ID. After enrollment the CLI prints:
+
+    ```text
+    Base VM ready: /Users/you/.cider/vms/cider-base
+    ```
   </Step>
 
   <Step title="The node comes online">
@@ -119,7 +121,7 @@ To remove the node from your organization, use the console or `cider nodes delet
 
 ## Connect several Macs
 
-Run `cider connect` on each Mac. Give each a distinct `--name` if two share a hostname. Pull the same `--image` on every node so snapshots and paused sandboxes restore anywhere.
+Run `cider connect` on each Mac. Give each a distinct `--name` if two share a hostname. Pull the same `--image` on every node so snapshots and paused sandboxes restore anywhere. `--image` only applies the first time, before `cider-base` exists.
 
 ## Next steps
 

@@ -13,6 +13,7 @@ resources:
   min_storage: 60GB
 
 setup:
+  - brew install node
   - npm install
 
 start: npm run dev
@@ -24,7 +25,7 @@ All keys are optional.
 
 ### `setup`
 
-One command, or a list of commands. Cider runs them once, in order, inside the sandbox after your project uploads. Each command starts in your project directory in a login `zsh` shell. If a command fails, sandbox creation fails.
+One command, or a list of commands. Cider runs them once, in order, inside the sandbox after your project uploads. Each command starts in your project directory in a login `zsh` shell. If a command fails, `cider open` reports an error; the sandbox stays `active` so you can inspect it with `cider ssh`.
 
 ### `start`
 
@@ -33,6 +34,10 @@ One command. Cider runs it in the background after setup completes. Its output g
 ### `resources.min_storage`
 
 The minimum disk size this project needs, as bytes or a size such as `60GB`. Units are `KB`, `MB`, `GB`, and `TB`, binary (1 GB = 1024³ bytes), case-insensitive. Cider only places the sandbox on a node that has at least this much free storage, and it gives the sandbox VM a disk of this size. The disk never shrinks below the base image size. If no connected node qualifies, creation fails with a clear error.
+
+<Note>
+  A sandbox whose disk grew past the base image size cannot be paused or snapshotted yet. Leave `min_storage` unset if you need pause or snapshot.
+</Note>
 
 ## Where the file must be
 
