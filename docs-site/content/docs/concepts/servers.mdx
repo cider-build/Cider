@@ -1,0 +1,89 @@
+---
+title: Servers
+description: A server is a long-lived, named macOS VM with an explicit size and a provisioning configuration. Use servers for coding agents, chat bots, and CI runners.
+icon: Server
+---
+
+A server is a macOS VM that you keep. Unlike a [sandbox](/concepts/sandboxes), a server has a name, an explicit size, and a configuration that Cider applies when it provisions the VM. Servers do not expire. You stop and start them, and their disk survives.
+
+## Create a server
+
+In the console, open **Servers** and choose **New server**. From the API, call `POST /servers`:
+
+```json
+{
+  "name": "agent-01",
+  "size": { "cpu_count": 6, "memory_bytes": 17179869184, "storage_bytes": 85899345920 },
+  "config": {
+    "image": "macos-26",
+    "software": ["claude-code", "openclaw"],
+    "channels": ["telegram"],
+    "env": { "TELEGRAM_BOT_TOKEN": "123456:ABC..." },
+    "setup": ["git clone https://github.com/acme/app ~/app"],
+    "start": "cd ~/app && npm run agent"
+  }
+}
+```
+
+The call returns at once with `status: "provisioning"`. Cider clones the base image at the requested size, runs the configuration, and moves the server to `running`. Watch the state in the console, or poll `GET /servers/{id}`.
+
+### Name
+
+1 to 63 characters. Letters, digits, spaces, `.`, `_`, and `-`. Must start with a letter or digit. Names are unique in your organization.
+
+### Size
+
+Pick a preset or set `cpu_count`, `memory_bytes`, and `storage_bytes` yourself. See [Machine sizes](/concepts/machine-sizes). Cider only places a server on a node that has at least this many cores, this much memory, and this much free storage.
+
+### Configuration
+
+| Key | Type | Default | Meaning |
+| --- | --- | --- | --- |
+| `image` | string | `"macos-26"` | Base image. |
+| `software` | string[] | `[]` | Tools to install at provision time. One or more of `claude-code`, `codex`, `cursor`, `openclaw`. |
+| `channels` | string[] | `[]` | Chat channels for the OpenClaw gateway. One or more of `telegram`, `discord`, `slack`. Adding a channel also installs `openclaw`. |
+| `env` | object | `{}` | Environment variables written to `~/.zprofile` in the guest. |
+| `setup` | string or string[] | none | Commands that run once, in order, after software installs. |
+| `start` | string | none | A command that runs in the background on every boot. Output goes to `/tmp/cider-start.log`. |
+
+Channel secrets come from `env`: `TELEGRAM_BOT_TOKEN`, `DISCORD_BOT_TOKEN`, `SLACK_APP_TOKEN` and `SLACK_BOT_TOKEN`.
+
+<Note>
+  Xcode ships as its own base image and is not available yet. Requesting `xcode` in `software` returns `422`.
+</Note>
+
+## States
+
+| State | Meaning |
+| --- | --- |
+| `provisioning` | Cider is creating the VM and applying the configuration. |
+| `running` | The VM runs on a node. You can open a terminal or SSH in. |
+| `stopping` | Cider exports the disk to Cider storage and deletes the VM. |
+| `stopped` | The disk lives in Cider storage. The node slot is free. |
+| `failed` | Provisioning or a start did not finish. `status_detail` explains why. |
+
+```text
+POST /servers ──► provisioning ──► running
+                              └──► failed        (status_detail set)
+running ── stop ──► stopping ──► stopped
+stopped ── start ──► provisioning ──► running   (any node with a free slot)
+failed  ── retry ──► stopped | provisioning
+```
+
+## Stop and start
+
+Stopping a server exports its disk to Cider storage and deletes the VM, which frees the node slot. Starting restores the disk on any connected node with capacity, which may be a different node from the one it ran on before. Your files, installed software, and `env` all come back. The `start` command runs again.
+
+If the node still has the VM (for example after a node restart), `start` starts it in place instead of restoring.
+
+## Retry
+
+When a server is `failed`, **Retry** either restores it from its last saved export (if it was stopped before) or provisions it again from scratch.
+
+## Terminals
+
+Open a terminal from the server page in the console, or run `cider ssh <server-name>` from the CLI. Both go through the node's outbound connection to Cider, so you do not open any inbound port on the node.
+
+## Metrics and storage
+
+Cider samples CPU, memory, and graphics memory every 30 seconds while a server runs, and it measures disk usage inside the guest. See the server page in the console or call `GET /servers/{id}/metrics`.

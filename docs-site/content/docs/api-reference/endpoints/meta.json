@@ -1,0 +1,11 @@
+{
+  "pages": [
+    "system",
+    "sandboxes",
+    "servers",
+    "snapshots",
+    "nodes",
+    "metrics",
+    "ssh"
+  ]
+}

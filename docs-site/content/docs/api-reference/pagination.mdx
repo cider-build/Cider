@@ -1,0 +1,47 @@
+---
+title: Pagination
+description: How list endpoints page their results.
+icon: List
+---
+
+`GET /nodes` pages. The other list endpoints return the whole list.
+
+## Paged responses
+
+```json
+{
+  "items": [ … ],
+  "page": 1,
+  "pages": 3,
+  "total": 27
+}
+```
+
+| Field | Meaning |
+| --- | --- |
+| `items` | The results on this page. |
+| `page` | The current page, starting at 1. |
+| `pages` | The total number of pages, at least 1. |
+| `total` | The total number of results. |
+
+Pages hold 10 items. Pass `?page=N` to fetch a page. A `page` beyond the last is clamped to the last page.
+
+## Walk every page
+
+```javascript
+async function listAllNodes() {
+  const first = await get("/nodes?page=1");
+  const rest = await Promise.all(
+    Array.from({ length: first.pages - 1 }, (_, i) => get(`/nodes?page=${i + 2}`)),
+  );
+  return [first, ...rest].flatMap((p) => p.items);
+}
+```
+
+## Search
+
+`GET /nodes` also takes `?search=<text>`, which filters by node name (substring, case-insensitive). `pages` and `total` reflect the filtered set.
+
+## Lists that do not page
+
+`GET /sandboxes`, `GET /servers`, and `GET /snapshots` return arrays. `GET /servers` and `GET /snapshots` take `?include_deleted=true` to include soft-deleted rows, which carry a `deleted_at` timestamp.

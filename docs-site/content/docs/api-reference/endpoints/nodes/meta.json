@@ -1,0 +1,10 @@
+{
+  "title": "Nodes",
+  "description": "The Apple Silicon Macs in your organization that run VMs.",
+  "pages": [
+    "listNodes",
+    "enrollNode",
+    "getNode",
+    "deleteNode"
+  ]
+}

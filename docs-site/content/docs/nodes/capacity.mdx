@@ -1,0 +1,58 @@
+---
+title: Node capacity and placement
+description: How Cider decides which node runs a VM, what the node reports, and the errors you see when nothing fits.
+icon: Gauge
+---
+
+Every time Cider creates, resumes, starts, or restores a VM, it picks a node. This page describes that choice.
+
+## What a node reports
+
+A node reports its capacity when it connects:
+
+- `cpu_count`, `memory_bytes`: the host's cores and memory.
+- `storage_total_bytes`, `storage_available_bytes`: the volume that holds `~/.cider/vms`.
+- `base_vm_cpu_count`, `base_vm_memory_bytes`, `base_vm_disk_bytes`: the size of the base image on that node.
+
+The report happens once per connection. Free storage updates when the connector reconnects, and Cider tracks the VMs it places in between.
+
+## Placement rules
+
+Cider filters connected nodes in your organization, in name order:
+
+1. **Pinned node.** If you passed `--node` or `node_id`, only that node is a candidate. It must be connected.
+2. **Fit.** The request's `cpu_count` must be at most the node's `cpu_count`, `memory_bytes` at most its `memory_bytes`, and `storage_bytes` at most its `storage_available_bytes`.
+3. **Slot.** The node must hold fewer than two VMs. Sandboxes that are `active`, `pausing`, or `restoring`, servers that are not `stopped`, and VMs still being created all count.
+
+Cider takes the first node that passes all three. Reservations are serialized, so two requests can never both claim the last slot on a node.
+
+## What sandboxes ask for
+
+A sandbox created with `cider open` asks for the base image size, plus `resources.min_storage` from `cider.yaml` if it is larger. A sandbox created empty asks for the base image size. Resume asks for the size the sandbox had.
+
+## What servers ask for
+
+Servers carry their `size`. See [Machine sizes](/concepts/machine-sizes). Start and retry ask for the same size again.
+
+## Errors
+
+| HTTP status | `detail` | Meaning |
+| --- | --- | --- |
+| `404` | `no connected nodes` | Your organization has no connected node. |
+| `404` | `node not found or not connected` | You pinned a node that does not exist or is offline. |
+| `422` | `no connected node offers 8 CPU cores, 32 GiB of memory, and 60 GiB of free storage` | Every connected node is too small for the request. |
+| `429` | `every eligible node is at its VM capacity; stop something first` | Nodes fit but all slots are taken. Pause a sandbox or stop a server. |
+
+The CLI prints the JSON body as the error message. The console shows the `detail` text.
+
+## Free a slot
+
+- `cider sandboxes pause <id>` exports the sandbox and deletes the VM.
+- Stop a server from the console, or `POST /servers/{id}/stop`.
+- `cider sandboxes delete <id>` for sandboxes you no longer need.
+
+Both pause and stop keep the disk in Cider storage. Resume and start can land on a different node.
+
+## Metrics
+
+While a VM runs, Cider samples CPU, memory, and graphics memory every 30 seconds and keeps 25 hours of history. The console charts them on each resource page. The API exposes them at `GET /sandboxes/{id}/metrics` and `GET /servers/{id}/metrics` with `window=live|1h|24h`.

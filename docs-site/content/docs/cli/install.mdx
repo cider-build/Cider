@@ -1,0 +1,80 @@
+---
+title: Install the CLI
+description: Install the cider command with npm or from source, and check that it works.
+icon: Download
+---
+
+The Cider CLI is a Node.js package that provides the `cider` command. It runs on macOS, Linux, and Windows for everything except `cider connect`, which needs an Apple Silicon Mac.
+
+## Requirements
+
+- Node.js 18.20 or later
+- Git, for `cider open`
+
+## Install with npm
+
+```bash
+npm install -g @cider/cli
+```
+
+Or with your package manager of choice:
+
+<Tabs>
+  <Tab title="npm">
+    ```bash
+    npm install -g @cider/cli
+    ```
+  </Tab>
+  <Tab title="pnpm">
+    ```bash
+    pnpm add -g @cider/cli
+    ```
+  </Tab>
+  <Tab title="bun">
+    ```bash
+    bun add -g @cider/cli
+    ```
+  </Tab>
+</Tabs>
+
+Verify:
+
+```bash
+cider --version
+```
+
+```text
+0.1.0
+```
+
+## Build from source
+
+```bash
+git clone https://github.com/cider-build/Cider.git
+cd Cider/cli
+npm install
+npm link
+```
+
+`npm link` puts a `cider` command on your `PATH` that points at the checkout. Remove it with `npm unlink -g @cider/cli`.
+
+## Point the CLI at Cider
+
+The CLI needs to know where the API is. Set it once:
+
+```bash
+export CIDER_API_URL=https://api.cider.build
+```
+
+Put that in your shell profile. Without it the CLI stops with `CIDER_API_URL must be set before the first Cider login`. See [Environment variables](/cli/environment).
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Authentication" icon="key" href="/cli/authentication">
+    Log in, or use an API key for scripts.
+  </Card>
+  <Card title="cider open" icon="folder-open" href="/cli/commands/open">
+    Create a sandbox from your project.
+  </Card>
+</CardGroup>

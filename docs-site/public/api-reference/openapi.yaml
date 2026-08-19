@@ -1,0 +1,1560 @@
+openapi: 3.1.0
+info:
+  title: Cider API
+  version: 0.1.0
+  description: |
+    The Cider control-plane API. Manage sandboxes, servers, snapshots, and nodes.
+
+    Authenticate with an API key from **Settings → API keys** in the console, sent as
+    `Authorization: Bearer <key>`.
+  contact:
+    name: Cider
+    url: https://cider.build
+servers:
+- url: https://api.cider.build
+  description: Production
+security:
+- apiKey: []
+tags:
+- name: Sandboxes
+  description: Short-lived macOS VMs created from your project or empty.
+- name: Servers
+  description: Long-lived, named macOS VMs with an explicit size and configuration.
+- name: Snapshots
+  description: Portable, content-addressed exports of sandbox disks.
+- name: Nodes
+  description: The Apple Silicon Macs in your organization that run VMs.
+- name: Metrics
+  description: CPU, memory, and graphics memory samples for running VMs.
+- name: SSH
+  description: Discover targets for interactive terminals.
+- name: System
+  description: Health.
+paths:
+  /health:
+    get:
+      tags:
+      - System
+      summary: Health check
+      description: Returns `ok` when the API and its database are reachable. No authentication.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - status
+                properties:
+                  status:
+                    type: string
+                    const: ok
+              example:
+                status: ok
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+  /sandboxes:
+    get:
+      tags:
+      - Sandboxes
+      summary: List sandboxes
+      description: Returns every sandbox in your organization that has not been deleted, newest first.
+      operationId: listSandboxes
+      responses:
+        '200':
+          description: Sandboxes
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Sandbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Sandboxes
+      summary: Create a sandbox
+      description: |
+        Creates a sandbox on a connected node and returns it as `active`.
+
+        Send `multipart/form-data`. Both parts are optional:
+
+        - `archive`: a gzipped tar of your project. If it contains a `cider.yaml` at its root
+          (or one directory down, as `cider open` uploads it), Cider applies `setup`, `start`,
+          and `resources.min_storage`.
+        - `node_id`: pin the sandbox to one node.
+
+        Without an archive you get an empty sandbox with the base image.
+      operationId: createSandbox
+      requestBody:
+        required: false
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                node_id:
+                  $ref: '#/components/schemas/NodeId'
+                archive:
+                  type: string
+                  format: binary
+                  description: Gzipped tar of the project tree.
+      responses:
+        '201':
+          description: Sandbox created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sandbox'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NoEligibleNode'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+        '429':
+          $ref: '#/components/responses/CapacityExhausted'
+  /sandboxes/{sandbox_id}:
+    parameters:
+    - $ref: '#/components/parameters/SandboxId'
+    get:
+      tags:
+      - Sandboxes
+      summary: Get a sandbox
+      operationId: getSandbox
+      responses:
+        '200':
+          description: Sandbox
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sandbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Sandboxes
+      summary: Delete a sandbox
+      description: Deletes the VM (if any) and any saved export, then soft-deletes the sandbox.
+      operationId: deleteSandbox
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /sandboxes/{sandbox_id}/execute:
+    parameters:
+    - $ref: '#/components/parameters/SandboxId'
+    post:
+      tags:
+      - Sandboxes
+      summary: Execute a command
+      description: Runs one command in the guest as the `lume` user in a login shell and returns its combined
+        output. The sandbox must be `active`.
+      operationId: executeInSandbox
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - command
+              properties:
+                command:
+                  type: string
+                  description: Shell command to run.
+                  examples:
+                  - sw_vers -productVersion
+      responses:
+        '200':
+          description: Command output
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - output
+                properties:
+                  output:
+                    type: string
+              example:
+                output: |
+                  26.5
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sandboxes/{sandbox_id}/pause:
+    parameters:
+    - $ref: '#/components/parameters/SandboxId'
+    post:
+      tags:
+      - Sandboxes
+      summary: Pause a sandbox
+      description: Exports the disk to Cider storage and deletes the VM, freeing the node slot. Only an
+        `active` sandbox can be paused. Returns the sandbox as `paused`.
+      operationId: pauseSandbox
+      responses:
+        '200':
+          description: Paused
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sandbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sandboxes/{sandbox_id}/resume:
+    parameters:
+    - $ref: '#/components/parameters/SandboxId'
+    post:
+      tags:
+      - Sandboxes
+      summary: Resume a sandbox
+      description: Restores a `paused` sandbox on a node with a free slot, then runs its `start` command.
+        Returns the sandbox as `active` with a fresh `created_at`.
+      operationId: resumeSandbox
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                node_id:
+                  oneOf:
+                  - $ref: '#/components/schemas/NodeId'
+                  - type: 'null'
+                  description: Pin the resume to one node. Omit to let Cider choose.
+            example: {}
+      responses:
+        '200':
+          description: Resumed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sandbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NoEligibleNode'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+        '429':
+          $ref: '#/components/responses/CapacityExhausted'
+  /sandboxes/{sandbox_id}/snapshots:
+    parameters:
+    - $ref: '#/components/parameters/SandboxId'
+    post:
+      tags:
+      - Sandboxes
+      summary: Snapshot a sandbox
+      description: Saves a portable snapshot of an `active` sandbox to Cider storage, then deletes the
+        VM. The sandbox moves to `stopped`. Restore it with `POST /snapshots/{snapshot_id}/restore`.
+      operationId: snapshotSandbox
+      responses:
+        '201':
+          description: Snapshot created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedSnapshot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /servers:
+    get:
+      tags:
+      - Servers
+      summary: List servers
+      operationId: listServers
+      parameters:
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+        description: Include soft-deleted servers.
+      responses:
+        '200':
+          description: Servers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Servers
+      summary: Create a server
+      description: |
+        Creates a named server. Returns at once with `status: "provisioning"`. Cider clones the
+        base image at the requested size on a connected node, installs the requested software,
+        applies `env`, runs `setup`, starts `start`, and moves the server to `running`.
+        Poll `GET /servers/{server_id}` for progress.
+      operationId: createServer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServerInput'
+      responses:
+        '201':
+          description: Server created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NoEligibleNode'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+        '429':
+          $ref: '#/components/responses/CapacityExhausted'
+  /servers/{server_id}:
+    parameters:
+    - $ref: '#/components/parameters/ServerId'
+    get:
+      tags:
+      - Servers
+      summary: Get a server
+      operationId: getServer
+      responses:
+        '200':
+          description: Server
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Servers
+      summary: Delete a server
+      description: Deletes the VM or its saved export, then soft-deletes the server.
+      operationId: deleteServer
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /servers/{server_id}/stop:
+    parameters:
+    - $ref: '#/components/parameters/ServerId'
+    post:
+      tags:
+      - Servers
+      summary: Stop a server
+      description: Exports the disk to Cider storage and deletes the VM. Returns `stopping`; the server
+        becomes `stopped` when the export finishes. Only a `running` server can be stopped.
+      operationId: stopServer
+      responses:
+        '200':
+          description: Stopping
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /servers/{server_id}/start:
+    parameters:
+    - $ref: '#/components/parameters/ServerId'
+    post:
+      tags:
+      - Servers
+      summary: Start a server
+      description: Restores a `stopped` server on a node with a free slot and runs its `start` command.
+        Returns `provisioning`; the server becomes `running` when the restore finishes.
+      operationId: startServer
+      responses:
+        '200':
+          description: Starting
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NoEligibleNode'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+        '429':
+          $ref: '#/components/responses/CapacityExhausted'
+  /servers/{server_id}/retry:
+    parameters:
+    - $ref: '#/components/parameters/ServerId'
+    post:
+      tags:
+      - Servers
+      summary: Retry a failed server
+      description: For a `failed` server. Restores the last saved export if there is one (returns `stopped`),
+        otherwise provisions the server again from scratch (returns `provisioning`).
+      operationId: retryServer
+      responses:
+        '200':
+          description: Retrying
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Server'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /snapshots:
+    get:
+      tags:
+      - Snapshots
+      summary: List snapshots
+      operationId: listSnapshots
+      parameters:
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+        description: Include deleted snapshots.
+      responses:
+        '200':
+          description: Snapshots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Snapshot'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /snapshots/{snapshot_id}:
+    parameters:
+    - $ref: '#/components/parameters/SnapshotId'
+    delete:
+      tags:
+      - Snapshots
+      summary: Delete a snapshot
+      operationId: deleteSnapshot
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /snapshots/{snapshot_id}/restore:
+    parameters:
+    - $ref: '#/components/parameters/SnapshotId'
+    post:
+      tags:
+      - Snapshots
+      summary: Restore a snapshot
+      description: |
+        Rebuilds the snapshot's source sandbox on a node and returns it as `active`. The source
+        sandbox must be `stopped`. The target node must have the same base image as the node the
+        snapshot was taken on. Send `{}` to let Cider choose the node.
+      operationId: restoreSnapshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                node_id:
+                  oneOf:
+                  - $ref: '#/components/schemas/NodeId'
+                  - type: 'null'
+                  description: Pin the restore to one node.
+            example: {}
+      responses:
+        '200':
+          description: Restored sandbox
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Sandbox'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NoEligibleNode'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/UnprocessableContent'
+        '429':
+          $ref: '#/components/responses/CapacityExhausted'
+  /nodes:
+    get:
+      tags:
+      - Nodes
+      summary: List nodes
+      description: Returns the nodes in your organization, 10 per page, sorted by name.
+      operationId: listNodes
+      parameters:
+      - name: page
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          default: 1
+      - name: search
+        in: query
+        required: false
+        schema:
+          type: string
+        description: Filter by node name (substring, case-insensitive).
+      responses:
+        '200':
+          description: A page of nodes
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodePage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /nodes/enrollments:
+    post:
+      tags:
+      - Nodes
+      summary: Enroll a node
+      description: |
+        Registers a node name and returns a node credential. `cider connect` calls this for you.
+        The credential is returned once and stored hashed. If a node with this name exists and is
+        offline, its credential is rotated and the same `id` is returned. If it is connected, you
+        get `409`.
+      operationId: enrollNode
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 120
+                  examples:
+                  - studio-m2
+      responses:
+        '201':
+          description: Enrolled
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - id
+                - name
+                - token
+                properties:
+                  id:
+                    $ref: '#/components/schemas/NodeId'
+                  name:
+                    type: string
+                  token:
+                    type: string
+                    description: Node credential. 64 hexadecimal characters. Shown once.
+              example:
+                id: 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+                name: studio-m2
+                token: 6b1f2c9d4e7a8b0c3d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /nodes/{node_id}:
+    parameters:
+    - $ref: '#/components/parameters/NodeId'
+    get:
+      tags:
+      - Nodes
+      summary: Get a node
+      operationId: getNode
+      responses:
+        '200':
+          description: Node
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Nodes
+      summary: Delete a node
+      description: Revokes the node's credential and disconnects it. Fails with `409` while the node has
+        running or provisioning servers, or (if connected) active sandboxes.
+      operationId: deleteNode
+      responses:
+        '204':
+          description: Deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /sandboxes/{sandbox_id}/metrics:
+    parameters:
+    - $ref: '#/components/parameters/SandboxId'
+    - $ref: '#/components/parameters/MetricsWindow'
+    get:
+      tags:
+      - Metrics
+      summary: Sandbox metrics
+      description: CPU, memory, and graphics memory samples for a sandbox, sampled every 30 seconds while
+        it runs.
+      operationId: getSandboxMetrics
+      responses:
+        '200':
+          description: Metric history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /servers/{server_id}/metrics:
+    parameters:
+    - $ref: '#/components/parameters/ServerId'
+    - $ref: '#/components/parameters/MetricsWindow'
+    get:
+      tags:
+      - Metrics
+      summary: Server metrics
+      description: CPU, memory, and graphics memory samples for a server, sampled every 30 seconds while
+        it runs.
+      operationId: getServerMetrics
+      responses:
+        '200':
+          description: Metric history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricHistory'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /ssh:
+    get:
+      tags:
+      - SSH
+      summary: List terminal targets
+      description: Returns the `active` sandboxes and `running` servers on connected nodes that you can
+        open a terminal to. For servers, `sandbox_id` is the server's VM ID.
+      operationId: listSshTargets
+      responses:
+        '200':
+          description: Targets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SshTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - SSH
+      summary: Resolve a terminal target
+      description: Confirms that a sandbox (or a server's VM ID) is available for a terminal session and
+        returns its target record.
+      operationId: selectSshTarget
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - sandbox_id
+              properties:
+                sandbox_id:
+                  $ref: '#/components/schemas/SandboxId'
+      responses:
+        '200':
+          description: Target
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SshTarget'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: API key
+      description: An API key from **Settings → API keys** in the console.
+  parameters:
+    SandboxId:
+      name: sandbox_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/SandboxId'
+    ServerId:
+      name: server_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ServerId'
+    SnapshotId:
+      name: snapshot_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/SnapshotId'
+    NodeId:
+      name: node_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/NodeId'
+    MetricsWindow:
+      name: window
+      in: query
+      required: false
+      schema:
+        type: string
+        enum:
+        - live
+        - 1h
+        - 24h
+        default: live
+      description: '`live` is the last 10 minutes, `1h` the last hour, `24h` the last day.'
+  responses:
+    BadRequest:
+      description: The request could not be read.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: BadRequest
+            detail: multipart request could not be parsed
+    Unauthorized:
+      description: Missing or invalid API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: Unauthorized
+            detail: not authenticated
+    NotFound:
+      description: Not found in your organization.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: NotFound
+            detail: sandbox not found
+    NoEligibleNode:
+      description: Not found, or no connected node can take the request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: NotFound
+            detail: no connected nodes
+    Conflict:
+      description: The resource's state does not allow this, or a name is taken.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: Conflict
+            detail: sandbox is paused; only a running sandbox can be paused
+    UnprocessableContent:
+      description: Validation failed, or no node is large enough.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: UnprocessableContent
+            detail: no connected node offers 8 CPU cores, 32 GiB of memory, and 60 GiB of free storage
+    CapacityExhausted:
+      description: Every fitting node is at its VM capacity.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: TooManyRequests
+            detail: every eligible node is at its VM capacity; stop something first
+    ServiceUnavailable:
+      description: Temporarily unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            _tag: ServiceUnavailable
+            detail: Database health check failed
+  schemas:
+    Error:
+      type: object
+      required:
+      - _tag
+      - detail
+      properties:
+        _tag:
+          type: string
+          enum:
+          - BadRequest
+          - Unauthorized
+          - NotFound
+          - Conflict
+          - UnprocessableContent
+          - TooManyRequests
+          - ServiceUnavailable
+        detail:
+          type: string
+          description: Human-readable message. Do not parse.
+    NodeId:
+      type: string
+      pattern: ^[0-9a-f]{32}$
+      examples:
+      - 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+    ServerId:
+      type: string
+      pattern: ^[0-9a-f]{32}$
+      examples:
+      - 4d1e7b2a9c3f4e5d8a6b7c0d1e2f3a4b
+    SnapshotId:
+      type: string
+      pattern: ^[0-9a-f]{32}$
+      examples:
+      - 0a1b2c3d4e5f60718293a4b5c6d7e8f9
+    SandboxId:
+      type: string
+      pattern: ^cider-[0-9a-f]{32}$
+      examples:
+      - cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+    Timestamp:
+      type: string
+      format: date-time
+      examples:
+      - '2026-08-19T14:02:11.000Z'
+    SandboxState:
+      type: string
+      enum:
+      - provisioning
+      - active
+      - pausing
+      - paused
+      - restoring
+      - stopped
+    ServerState:
+      type: string
+      enum:
+      - provisioning
+      - running
+      - stopping
+      - stopped
+      - failed
+    Sandbox:
+      type: object
+      required:
+      - id
+      - node_id
+      - node_name
+      - cpu_count
+      - memory_bytes
+      - storage_bytes
+      - storage_used_bytes
+      - status
+      - created_at
+      - deleted_at
+      properties:
+        id:
+          $ref: '#/components/schemas/SandboxId'
+        node_id:
+          $ref: '#/components/schemas/NodeId'
+        node_name:
+          type: string
+          examples:
+          - studio-m2
+        cpu_count:
+          type: integer
+          minimum: 1
+          examples:
+          - 4
+        memory_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 8589934592
+        storage_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 64424509440
+        storage_used_bytes:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: Bytes used inside the guest, or `null` before the first measurement.
+          examples:
+          - 21474836480
+        status:
+          $ref: '#/components/schemas/SandboxState'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        deleted_at:
+          oneOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+      examples:
+      - id: cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+        node_id: 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+        node_name: studio-m2
+        cpu_count: 4
+        memory_bytes: 8589934592
+        storage_bytes: 64424509440
+        storage_used_bytes: 21474836480
+        status: active
+        created_at: '2026-08-19T14:02:11.000Z'
+        deleted_at: null
+    VmSize:
+      type: object
+      required:
+      - cpu_count
+      - memory_bytes
+      - storage_bytes
+      properties:
+        cpu_count:
+          type: integer
+          minimum: 1
+          examples:
+          - 6
+        memory_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 17179869184
+        storage_bytes:
+          type: integer
+          minimum: 1
+          description: Disk size. At least the base image size on the node.
+          examples:
+          - 85899345920
+      examples:
+      - cpu_count: 6
+        memory_bytes: 17179869184
+        storage_bytes: 85899345920
+    ServerConfigurationInput:
+      type: object
+      description: How Cider provisions the server. Every key is optional.
+      properties:
+        image:
+          type: string
+          default: macos-26
+          examples:
+          - macos-26
+        software:
+          type: array
+          items:
+            type: string
+            enum:
+            - claude-code
+            - codex
+            - cursor
+            - openclaw
+          examples:
+          - - claude-code
+            - openclaw
+        channels:
+          type: array
+          items:
+            type: string
+            enum:
+            - telegram
+            - discord
+            - slack
+          description: Chat channels for the OpenClaw gateway. Adding a channel also installs `openclaw`.
+          examples:
+          - - telegram
+        env:
+          type: object
+          additionalProperties:
+            type: string
+          description: Environment variables written to `~/.zprofile` in the guest.
+          examples:
+          - TELEGRAM_BOT_TOKEN: 123456:ABC-DEF
+        setup:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+          description: Commands that run once after software installs, in a login shell.
+          examples:
+          - - git clone https://github.com/acme/app ~/app
+        start:
+          type:
+          - string
+          - 'null'
+          description: Command that runs in the background on every boot. Output goes to `/tmp/cider-start.log`.
+          examples:
+          - cd ~/app && npm run agent
+    ServerConfiguration:
+      type: object
+      required:
+      - image
+      - software
+      - channels
+      - env
+      - setup
+      - start
+      properties:
+        image:
+          type: string
+        software:
+          type: array
+          items:
+            type: string
+        channels:
+          type: array
+          items:
+            type: string
+        env:
+          type: object
+          additionalProperties:
+            type: string
+        setup:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+        start:
+          type:
+          - string
+          - 'null'
+    CreateServerInput:
+      type: object
+      required:
+      - name
+      - size
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 63
+          pattern: ^[a-zA-Z0-9][a-zA-Z0-9 ._-]*$
+          description: Unique in your organization.
+          examples:
+          - agent-01
+        node_id:
+          oneOf:
+          - $ref: '#/components/schemas/NodeId'
+          - type: 'null'
+          description: Pin the server to one node. Omit to let Cider choose.
+        size:
+          $ref: '#/components/schemas/VmSize'
+        config:
+          oneOf:
+          - $ref: '#/components/schemas/ServerConfigurationInput'
+          - type: 'null'
+      examples:
+      - name: agent-01
+        size:
+          cpu_count: 6
+          memory_bytes: 17179869184
+          storage_bytes: 85899345920
+        config:
+          image: macos-26
+          software:
+          - claude-code
+          - openclaw
+          channels:
+          - telegram
+          env:
+            TELEGRAM_BOT_TOKEN: 123456:ABC-DEF
+          setup:
+          - git clone https://github.com/acme/app ~/app
+          start: cd ~/app && npm run agent
+    Server:
+      type: object
+      required:
+      - id
+      - name
+      - node_id
+      - node_name
+      - status
+      - status_detail
+      - cpu_count
+      - memory_bytes
+      - storage_bytes
+      - storage_used_bytes
+      - config
+      - created_at
+      - deleted_at
+      properties:
+        id:
+          $ref: '#/components/schemas/ServerId'
+        name:
+          type: string
+          examples:
+          - agent-01
+        node_id:
+          $ref: '#/components/schemas/NodeId'
+        node_name:
+          type: string
+          examples:
+          - studio-m2
+        status:
+          $ref: '#/components/schemas/ServerState'
+        status_detail:
+          type:
+          - string
+          - 'null'
+          description: Why the server is `failed` or `stopped`, when Cider knows.
+          examples:
+          - null
+        cpu_count:
+          type: integer
+          minimum: 1
+          examples:
+          - 6
+        memory_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 17179869184
+        storage_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 85899345920
+        storage_used_bytes:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          examples:
+          - 32212254720
+        config:
+          oneOf:
+          - $ref: '#/components/schemas/ServerConfiguration'
+          - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        deleted_at:
+          oneOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+      examples:
+      - id: 4d1e7b2a9c3f4e5d8a6b7c0d1e2f3a4b
+        name: agent-01
+        node_id: 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+        node_name: studio-m2
+        status: running
+        status_detail: null
+        cpu_count: 6
+        memory_bytes: 17179869184
+        storage_bytes: 85899345920
+        storage_used_bytes: 32212254720
+        config:
+          image: macos-26
+          software:
+          - claude-code
+          - openclaw
+          channels:
+          - telegram
+          env:
+            TELEGRAM_BOT_TOKEN: 123456:ABC-DEF
+          setup:
+          - git clone https://github.com/acme/app ~/app
+          start: cd ~/app && npm run agent
+        created_at: '2026-08-19T14:02:11.000Z'
+        deleted_at: null
+    Snapshot:
+      type: object
+      required:
+      - id
+      - source_sandbox_id
+      - created_at
+      - deleted_at
+      - size_bytes
+      properties:
+        id:
+          $ref: '#/components/schemas/SnapshotId'
+        source_sandbox_id:
+          $ref: '#/components/schemas/SandboxId'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        deleted_at:
+          oneOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+        size_bytes:
+          type:
+          - integer
+          - 'null'
+          minimum: 0
+          description: Sum of the stored blocks this snapshot references. `null` for deleted snapshots.
+          examples:
+          - 1879048192
+      examples:
+      - id: 0a1b2c3d4e5f60718293a4b5c6d7e8f9
+        source_sandbox_id: cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+        created_at: '2026-08-19T14:30:02.000Z'
+        deleted_at: null
+        size_bytes: 1879048192
+    CreatedSnapshot:
+      type: object
+      required:
+      - id
+      - source_sandbox_id
+      - org_id
+      - launch_config
+      - created_at
+      - deleted_at
+      properties:
+        id:
+          $ref: '#/components/schemas/SnapshotId'
+        source_sandbox_id:
+          $ref: '#/components/schemas/SandboxId'
+        org_id:
+          type: string
+          pattern: ^[0-9a-f]{32}$
+        launch_config:
+          oneOf:
+          - $ref: '#/components/schemas/LaunchConfiguration'
+          - type: 'null'
+        created_at:
+          $ref: '#/components/schemas/Timestamp'
+        deleted_at:
+          oneOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+      examples:
+      - id: 0a1b2c3d4e5f60718293a4b5c6d7e8f9
+        source_sandbox_id: cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+        org_id: 7e2f0a4b8c3d1e5f9a6b2c4d8e0f1a3b
+        launch_config:
+          setup:
+          - npm install
+          start: npm run dev
+        created_at: '2026-08-19T14:30:02.000Z'
+        deleted_at: null
+    LaunchConfiguration:
+      type: object
+      description: The parsed `cider.yaml`.
+      properties:
+        resources:
+          type: object
+          properties:
+            min_storage:
+              oneOf:
+              - type: integer
+                minimum: 1
+              - type: string
+                pattern: ^\s*[0-9]+(\.[0-9]+)?\s*(kb|mb|gb|tb)\s*$
+              examples:
+              - 60GB
+        setup:
+          oneOf:
+          - type: string
+          - type: array
+            items:
+              type: string
+          - type: 'null'
+        start:
+          type:
+          - string
+          - 'null'
+    NodeMetadata:
+      type: object
+      required:
+      - hardware_model
+      - chip
+      - macos_version
+      - cpu_count
+      - memory_bytes
+      - storage_total_bytes
+      - storage_available_bytes
+      - base_vm_cpu_count
+      - base_vm_memory_bytes
+      - base_vm_disk_bytes
+      properties:
+        hardware_model:
+          type: string
+          examples:
+          - Mac15,12
+        chip:
+          type: string
+          examples:
+          - Apple M3 Max
+        macos_version:
+          type: string
+          examples:
+          - '26.5'
+        cpu_count:
+          type: integer
+          minimum: 1
+          examples:
+          - 16
+        memory_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 137438953472
+        storage_total_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 2000000000000
+        storage_available_bytes:
+          type: integer
+          minimum: 0
+          examples:
+          - 1200000000000
+        base_vm_cpu_count:
+          type: integer
+          minimum: 1
+          examples:
+          - 4
+        base_vm_memory_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 8589934592
+        base_vm_disk_bytes:
+          type: integer
+          minimum: 1
+          examples:
+          - 53687091200
+    Node:
+      type: object
+      required:
+      - id
+      - name
+      - connected
+      - metadata
+      properties:
+        id:
+          $ref: '#/components/schemas/NodeId'
+        name:
+          type: string
+          examples:
+          - studio-m2
+        connected:
+          type: boolean
+          description: True while the node holds a live connection to Cider.
+        metadata:
+          oneOf:
+          - $ref: '#/components/schemas/NodeMetadata'
+          - type: 'null'
+          description: Hardware and capacity. `null` until the node has connected once.
+      examples:
+      - id: 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+        name: studio-m2
+        connected: true
+        metadata:
+          hardware_model: Mac15,12
+          chip: Apple M3 Max
+          macos_version: '26.5'
+          cpu_count: 16
+          memory_bytes: 137438953472
+          storage_total_bytes: 2000000000000
+          storage_available_bytes: 1200000000000
+          base_vm_cpu_count: 4
+          base_vm_memory_bytes: 8589934592
+          base_vm_disk_bytes: 53687091200
+    NodePage:
+      type: object
+      required:
+      - items
+      - page
+      - pages
+      - total
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Node'
+        page:
+          type: integer
+          minimum: 1
+        pages:
+          type: integer
+          minimum: 1
+        total:
+          type: integer
+          minimum: 0
+      examples:
+      - items:
+        - id: 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+          name: studio-m2
+          connected: true
+          metadata:
+            hardware_model: Mac15,12
+            chip: Apple M3 Max
+            macos_version: '26.5'
+            cpu_count: 16
+            memory_bytes: 137438953472
+            storage_total_bytes: 2000000000000
+            storage_available_bytes: 1200000000000
+            base_vm_cpu_count: 4
+            base_vm_memory_bytes: 8589934592
+            base_vm_disk_bytes: 53687091200
+        page: 1
+        pages: 1
+        total: 1
+    MetricSample:
+      type: object
+      required:
+      - cpu_percent
+      - memory_percent
+      - graphics_memory_bytes
+      - collected_at
+      properties:
+        cpu_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+          examples:
+          - 37.5
+        memory_percent:
+          type: number
+          minimum: 0
+          maximum: 100
+          examples:
+          - 61.2
+        graphics_memory_bytes:
+          type: integer
+          minimum: 0
+          examples:
+          - 402653184
+        collected_at:
+          $ref: '#/components/schemas/Timestamp'
+    MetricHistory:
+      type: object
+      required:
+      - sampling_interval_seconds
+      - samples
+      properties:
+        sampling_interval_seconds:
+          type: integer
+          const: 30
+        samples:
+          type: array
+          description: Ordered by `collected_at`, oldest first.
+          items:
+            $ref: '#/components/schemas/MetricSample'
+      examples:
+      - sampling_interval_seconds: 30
+        samples:
+        - cpu_percent: 37.5
+          memory_percent: 61.2
+          graphics_memory_bytes: 402653184
+          collected_at: '2026-08-19T14:02:00.000Z'
+        - cpu_percent: 41.0
+          memory_percent: 61.4
+          graphics_memory_bytes: 402653184
+          collected_at: '2026-08-19T14:02:30.000Z'
+    SshTarget:
+      type: object
+      required:
+      - sandbox_id
+      - node_id
+      - node_name
+      - status
+      - server_name
+      properties:
+        sandbox_id:
+          $ref: '#/components/schemas/SandboxId'
+        node_id:
+          $ref: '#/components/schemas/NodeId'
+        node_name:
+          type: string
+          examples:
+          - studio-m2
+        status:
+          type: string
+          description: '`active` for sandboxes, `running` for servers.'
+          examples:
+          - active
+        server_name:
+          type:
+          - string
+          - 'null'
+          description: The server name, or `null` for a sandbox.
+          examples:
+          - null
+      examples:
+      - sandbox_id: cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+        node_id: 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+        node_name: studio-m2
+        status: active
+        server_name: null

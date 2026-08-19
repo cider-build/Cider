@@ -1,0 +1,53 @@
+---
+title: Snapshots
+description: A snapshot is a portable, content-addressed copy of a sandbox disk in Cider storage. Restore it on any node that has the same base image.
+icon: Camera
+---
+
+A snapshot captures the disk of a sandbox at a point in time and stores it in Cider storage. Cider only stores the 4 MiB blocks that differ from the base image, addressed by their SHA-256 digest, so snapshots are small and deduplicated across your organization.
+
+## Take a snapshot
+
+```bash
+cider sandboxes snapshot cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+```
+
+Or `POST /sandboxes/{id}/snapshots`. The sandbox must be `active`. Cider flushes the guest disk, stops the VM, uploads the changed blocks, saves the manifest, and then deletes the VM. The sandbox moves to `stopped`.
+
+The command prints the snapshot ID, a 32-character hexadecimal string.
+
+## Restore a snapshot
+
+```bash
+cider snapshots restore 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7 --node <node-id>
+```
+
+Or `POST /snapshots/{id}/restore` with an optional `node_id`. Cider clones the base image on the target node, writes the stored blocks over it, boots the VM, and re-runs the sandbox's `start` command. The source sandbox becomes `active` again with a fresh `created_at`.
+
+## Base image compatibility
+
+A snapshot records the SHA-256 of the base disk image it was taken from. Restore only works on a node whose `cider-base` image has the same digest. Cider checks this before it writes any block and reports a clear error otherwise:
+
+```text
+snapshot requires base image 3a1f…, but this node has 8c42…
+```
+
+<Tip>
+  Keep every node in your organization on the same pinned image tag. `cider connect` pins `macos-tahoe-cua:26.5.2` by default. Pass the same `--image` on every node.
+</Tip>
+
+## Pause uses the same mechanism
+
+Pausing a sandbox and stopping a server both write the same kind of export to Cider storage. Those exports do not appear in your snapshot list. Cider discards them when you resume, start, or delete the resource.
+
+## Size
+
+`GET /snapshots` reports `size_bytes` for each snapshot: the sum of the stored blocks it references. Deleted snapshots report `null`.
+
+## Delete a snapshot
+
+```bash
+cider snapshots delete 9f2c1e0a4b5d6e7f8091a2b3c4d5e6f7
+```
+
+Deleting a snapshot removes its manifest. Blocks that no other snapshot references are reclaimed by Cider storage.

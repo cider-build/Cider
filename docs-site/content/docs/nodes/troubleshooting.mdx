@@ -1,0 +1,75 @@
+---
+title: Node troubleshooting
+description: Common errors from cider connect and the node runtime, what they mean, and how to fix them.
+icon: Wrench
+---
+
+## `Cider nodes require Apple Silicon running macOS`
+
+You ran `cider connect` on an Intel Mac, on Linux, or under Rosetta. Use an Apple Silicon Mac and a native `arm64` Node.js. Check with `node -p process.arch`; it must print `arm64`.
+
+## `lume: command not found` or `Lume is not installed`
+
+Install Lume (see [Node requirements](/nodes/requirements#install-lume)) and make sure `~/.local/bin` is on your `PATH`, or set `LUME=$HOME/.local/bin/lume`. When you run the node as a service, put `LUME` and `PATH` in the job's environment.
+
+## `Cider base VM installation declined`
+
+You answered `N` to the base image prompt. Run `cider connect` again and answer `y`, or pass `--yes`.
+
+## `lume pull failed with exit code N`
+
+The download failed or was interrupted. Check free disk space and network, then run `cider connect` again. Lume resumes partial downloads.
+
+## `a node named "X" is already connected`
+
+Another connector is online with that name. Either stop it (Ctrl+C or `launchctl bootout`), pass a different `--name`, or wait about a minute after it went offline and try again. If you know the other connector is gone, this clears itself when Cider's liveness timeout (60 seconds) expires.
+
+## `cider-node did not become healthy within 30 seconds`
+
+The node runtime did not start. Common causes:
+
+- Port 8001 is in use. Check with `lsof -i :8001`. Stop the other process or set `CIDER_NODE_PORT`.
+- The `cider-node` executable is missing or not on `PATH`. Pass `--node-command <path>`.
+- Lume is not executable from the runtime's environment.
+
+Run the runtime by hand to see its output: `cider-node`.
+
+## `node connection rejected (HTTP 401)` or close code `1008`
+
+The node credential is invalid or was revoked (for example after `cider nodes delete`). Run `cider connect` again to enroll the Mac; Cider issues a fresh credential.
+
+## `Node connection lost (...); reconnecting in Ns`
+
+The WebSocket dropped. The connector reconnects with backoff. If this repeats, check the Mac's sleep settings and network. A sleeping Mac disconnects.
+
+## The node shows `connected: false` in the console
+
+- The connector is not running. Start it, or check `launchctl print gui/$(id -u)/build.cider.connector`.
+- The Mac is asleep. See [Sleep and power](/nodes/requirements#sleep-and-power).
+- The connector is stuck reconnecting. Look at `~/.cider/logs/connector.err.log`.
+
+## `snapshot requires base image X, but this node has Y`
+
+The node's `cider-base` differs from the one the snapshot was taken on. Pull the same tag with `cider connect --image <name:tag>` on both nodes. Cider pins `macos-tahoe-cua:26.5.2` by default.
+
+## `every eligible node is at its VM capacity`
+
+Both slots on every fitting node are in use. Pause a sandbox or stop a server. See [Node capacity](/nodes/capacity).
+
+## VMs keep running after the connector stops
+
+That is expected. Stopping the connector does not touch VMs. When the connector comes back, Cider reconciles and either reattaches the VMs to their sandboxes and servers or removes orphans.
+
+## Reset a node
+
+To start over on a Mac:
+
+```bash
+launchctl bootout "gui/$(id -u)/build.cider.connector" 2>/dev/null
+lume ls --storage ~/.cider/vms
+lume delete <vm> --force --storage ~/.cider/vms   # for each cider-* VM
+rm ~/.cider/node.json
+cider connect
+```
+
+Delete the old node record in the console if you changed the name.

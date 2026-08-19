@@ -1,0 +1,55 @@
+---
+title: cider connect
+description: Install the base image and connect the Mac you run this on as a node in your organization.
+icon: Plug
+---
+
+```bash
+cider connect [--name <name>] [--image <name:tag>] [--node-command <path>] [-y | --yes]
+```
+
+Enrolls the current Mac as a node, pulls the base image if it is missing, starts the node runtime, and holds an outbound connection to Cider until you press Ctrl+C. Apple Silicon only.
+
+For a step-by-step walkthrough, see [Connect a node](/nodes/connect). For a persistent install, see [Run a node as a service](/nodes/run-as-a-service).
+
+## Flags
+
+| Flag | Default | Meaning |
+| --- | --- | --- |
+| `--name <name>` | previous name, then hostname | Node name. Unique in your organization. |
+| `--image <name:tag>` | `macos-tahoe-cua:26.5.2` | Base image to pull as `cider-base`. Also `CIDER_IMAGE`. |
+| `--node-command <path>` | `cider-node` | Path to the node runtime. Also `CIDER_NODE_COMMAND`. |
+| `-y`, `--yes` | off | Skip the base image confirmation. |
+
+## What it does
+
+1. Loads your session from `~/.cider/config.json` or `CIDER_TOKEN`. Prompts for email and password if there is none.
+2. Creates `~/.cider/ssh_key` (ed25519) if it does not exist.
+3. Checks that this is `darwin` on `arm64` and that `lume` runs.
+4. Pulls the base image into `~/.cider/vms/cider-base` if it is missing, and pins the tag in `~/.cider/cider-base.image-ref`.
+5. Computes the base disk digest into `~/.cider/cider-base.image-id` (once).
+6. Reads the Mac's hardware and free storage.
+7. Enrolls the node (`POST /nodes/enrollments`) and saves the credential in `~/.cider/node.json`.
+8. Starts `cider-node` on `127.0.0.1:8001` and waits for `/health`.
+9. Opens the connection to Cider and holds it, reconnecting with backoff.
+
+## Output
+
+```text
+Base VM ready: /Users/you/.cider/vms/cider-base
+Connected studio-m2 to Cider. Press Ctrl+C to disconnect.
+```
+
+While connected, the connector logs reconnects to stderr:
+
+```text
+Node connection lost (socket hang up); reconnecting in 4s
+```
+
+## Stop
+
+Ctrl+C. The connector closes the connection with a normal close, stops the runtime, and exits `0`. VMs on the Mac keep running.
+
+## Errors
+
+See [Node troubleshooting](/nodes/troubleshooting) for every message and its fix.

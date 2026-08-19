@@ -1,0 +1,65 @@
+---
+title: CLI authentication
+description: How the CLI logs in, where it stores the session, and how to use an API key in scripts and CI.
+icon: Key
+---
+
+The CLI authenticates every request to Cider with a bearer token. There are two ways to get one.
+
+## Interactive login
+
+`cider connect` prompts for your email and password the first time, and again when the session expires:
+
+```text
+Log in to Cider
+Email: you@example.com
+Password:
+Authenticated as you@example.com (Acme)
+```
+
+The CLI stores the session at `~/.cider/config.json` with mode `0600`:
+
+```json title="~/.cider/config.json"
+{ "apiUrl": "https://api.cider.build", "token": "…" }
+```
+
+All other commands read that file. When the token expires, the next `cider connect` prints `Your Cider login has expired.` and asks you to log in again.
+
+## API key
+
+For scripts, CI, and unattended nodes, use an API key. Create one in the console under **Settings → API keys** (see [API authentication](/api-reference/authentication)), then export it:
+
+```bash
+export CIDER_API_URL=https://api.cider.build
+export CIDER_TOKEN=cider_live_2f9c…
+```
+
+`CIDER_TOKEN` takes precedence over the saved session and is never written to disk. An API key works everywhere a session does, including `cider connect`.
+
+<Warning>
+  Treat an API key like a password. It grants full access to your organization. Store it in your CI's secret store, not in the repository.
+</Warning>
+
+## Non-interactive terminals
+
+The interactive login needs a TTY. In a non-interactive shell you get:
+
+```text
+cider: interactive login requires a terminal; set CIDER_TOKEN for non-interactive use
+```
+
+Set `CIDER_TOKEN` and the CLI skips the prompt.
+
+## Node credentials
+
+`cider connect` also creates a separate credential for the node itself and stores it in `~/.cider/node.json`. That credential only authenticates the node's connection to Cider. It is not your session and does not work for other commands.
+
+## Log out
+
+Delete the session file:
+
+```bash
+rm ~/.cider/config.json
+```
+
+Sessions also expire on their own. To revoke an API key, delete it in the console.

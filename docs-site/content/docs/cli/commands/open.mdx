@@ -1,0 +1,77 @@
+---
+title: cider open
+description: Create a sandbox from a local Git worktree.
+icon: FolderOpen
+---
+
+```bash
+cider open [path] [--include-ignored]
+```
+
+Uploads the Git worktree at `path` (default `.`) and creates a sandbox from it. Prints the new sandbox ID on stdout and nothing else, so you can pipe it.
+
+## Arguments and flags
+
+| Name | Meaning |
+| --- | --- |
+| `path` | Directory inside a Git worktree. Defaults to the current directory. |
+| `--include-ignored` | Also upload files that `.gitignore` excludes, such as `node_modules` or `.env`. Off by default. |
+
+## What gets uploaded
+
+The CLI runs `git ls-files --cached --modified --others --exclude-standard` in `path` and archives exactly those files. That means:
+
+- Tracked files, modified files, and untracked files are included.
+- Ignored files are excluded unless you pass `--include-ignored`.
+- The `.git` directory itself is not uploaded.
+- The archive is rooted at the directory's basename. A project in `~/work/myapp` lands at `~/cider/myapp` in the guest.
+
+The archive is a gzipped tar built in a temporary directory and deleted after upload.
+
+<Note>
+  `cider open` only works inside a Git worktree. Run `git init` first if you need to upload a plain directory.
+</Note>
+
+## `cider.yaml`
+
+If the root of your project has a `cider.yaml`, Cider reads it and applies `setup`, `start`, and `resources.min_storage`. See [cider.yaml](/cli/cider-yaml).
+
+## Examples
+
+Open the current project and get a shell in one line:
+
+```bash
+cider ssh $(cider open .)
+```
+
+Open a project by path:
+
+```bash
+cider open ~/work/myapp
+```
+
+```text
+cider-3f9a1c7d2e5b48a0b6c1d7e2f0a4b8c3
+```
+
+Upload everything, including ignored files:
+
+```bash
+cider open . --include-ignored
+```
+
+## Errors
+
+| Message | Cause |
+| --- | --- |
+| `cider: Command failed: git -C … ls-files …` | `path` is not inside a Git worktree. |
+| `{"detail":"no connected nodes"}` | Your organization has no connected node. Run `cider connect`. |
+| `{"detail":"no connected node offers …"}` | `resources.min_storage` is larger than any node's free storage. |
+| `{"detail":"every eligible node is at its VM capacity; stop something first"}` | Pause a sandbox or stop a server. |
+| `{"detail":"cider.yaml has an invalid launch configuration"}` | Fix the file. See [cider.yaml](/cli/cider-yaml). |
+
+## Related
+
+- [`cider ssh`](/cli/commands/ssh) to connect to the sandbox.
+- [`cider sandboxes`](/cli/commands/sandboxes) to list, pause, resume, snapshot, and delete.
+- `POST /sandboxes` in the [API reference](/api-reference/introduction) for the same operation over HTTP.

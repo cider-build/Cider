@@ -28,10 +28,10 @@ __pycache__/
 .cider/
 .claude/
 
-scripts/
+/scripts/
 # os
 .DS_Store
-docs/
+/docs/
 
 artifacts/
 tmp/

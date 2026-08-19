@@ -1,0 +1,36 @@
+---
+title: Machine sizes
+description: The preset sizes for servers, the custom ranges, and how disk size works.
+icon: Ruler
+---
+
+Servers have an explicit size: `cpu_count`, `memory_bytes`, and `storage_bytes`. The console offers presets. The API takes raw values.
+
+## Presets
+
+| Preset | CPU cores | Memory | `memory_bytes` |
+| --- | --- | --- | --- |
+| XS | 2 | 4 GiB | `4294967296` |
+| S | 4 | 8 GiB | `8589934592` |
+| M (default) | 6 | 16 GiB | `17179869184` |
+| L | 8 | 32 GiB | `34359738368` |
+| XL | 12 | 64 GiB | `68719476736` |
+
+Memory is binary: 1 GiB = 1,073,741,824 bytes.
+
+## Custom sizes
+
+The console lets you choose from these values. The API accepts any positive integer.
+
+- CPU cores: 1, 2, 3, 4, 6, 8, 10, 12, 16, 20, 24, 32
+- Memory (GiB): 2, 4, 6, 8, 12, 16, 24, 32, 48, 64, 96, 128, 192
+
+## Disk
+
+`storage_bytes` is the disk the VM gets. It must be at least the base image disk size on the node (about 50 GiB for the default image) and at most the node's free storage. Cider grows the disk when it clones the base image. It never shrinks a disk.
+
+Sandboxes do not take a size. They inherit the base image size, plus any extra disk that `cider.yaml` requests with `resources.min_storage`.
+
+## Fit
+
+A size fits a node when the node has at least that many cores, that much memory, and that much free storage. Sizes are not capped by what the base image was built with; the node grows the VM when it clones. See [Node capacity](/nodes/capacity).

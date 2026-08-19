@@ -1,0 +1,8 @@
+{
+  "title": "Metrics",
+  "description": "CPU, memory, and graphics memory samples for running VMs.",
+  "pages": [
+    "getSandboxMetrics",
+    "getServerMetrics"
+  ]
+}

@@ -1,0 +1,174 @@
+@import 'tailwindcss';
+@import 'fumadocs-ui/css/neutral.css';
+@import 'fumadocs-ui/css/preset.css';
+@import 'fumadocs-openapi/css/preset.css';
+
+/*
+ * Cider design tokens.
+ * Source of truth: frontend/src/styles/tokens.css in the Cider console.
+ * The docs site maps those tokens onto the Fumadocs theme variables.
+ */
+:root {
+  --color-background-page: #f6f6f2;
+  --color-background-panel: #fff;
+  --color-background-raised: #faf9f5;
+  --color-background-soft: #ecece5;
+  --color-border: #d9d9d0;
+  --color-border-strong: #c9c9c0;
+  --color-text: #1d1e1b;
+  --color-text-on-accent: #fff;
+  --color-text-muted: #74766d;
+  --color-accent: #ff8200;
+  --color-accent-hover: #ff9526;
+  --color-danger: #b42318;
+  --color-terminal-background: #171717;
+  --color-terminal-text: #ededed;
+  --duration-fast: 140ms;
+  --duration-control: 160ms;
+  --ease-standard: cubic-bezier(0.23, 1, 0.32, 1);
+  --radius-control: 2px;
+}
+
+.dark {
+  --color-background-page: #0e0e0d;
+  --color-background-panel: #141412;
+  --color-background-raised: #191916;
+  --color-background-soft: #1e1e1a;
+  --color-border: #282823;
+  --color-border-strong: #37372f;
+  --color-text: #e7e7df;
+  --color-text-muted: #8d8d83;
+  --color-danger: #d4645a;
+}
+
+@theme {
+  --font-sans: var(--font-montserrat), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), ui-monospace, sfmono-regular, menlo, monospace;
+
+  --color-fd-background: var(--color-background-page);
+  --color-fd-foreground: var(--color-text);
+  --color-fd-muted: var(--color-background-soft);
+  --color-fd-muted-foreground: var(--color-text-muted);
+  --color-fd-popover: var(--color-background-panel);
+  --color-fd-popover-foreground: var(--color-text);
+  --color-fd-card: var(--color-background-panel);
+  --color-fd-card-foreground: var(--color-text);
+  --color-fd-border: var(--color-border);
+  --color-fd-primary: var(--color-accent);
+  --color-fd-primary-foreground: var(--color-text-on-accent);
+  --color-fd-secondary: var(--color-background-soft);
+  --color-fd-secondary-foreground: var(--color-text);
+  --color-fd-accent: var(--color-background-soft);
+  --color-fd-accent-foreground: var(--color-text);
+  --color-fd-ring: var(--color-accent);
+  --color-fd-overlay: rgb(0 0 0 / 20%);
+
+  --color-fd-info: #74766d;
+  --color-fd-warning: #9a5a16;
+  --color-fd-error: #b42318;
+  --color-fd-success: #3f6b3a;
+  --color-fd-idea: #ff8200;
+
+  --radius-sm: var(--radius-control);
+  --radius-md: var(--radius-control);
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
+}
+
+html {
+  scrollbar-gutter: stable;
+}
+
+html > body[data-scroll-locked] {
+  margin-right: 0px !important;
+  --removed-body-scroll-bar-size: 0px !important;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+code,
+kbd,
+pre,
+samp {
+  font-family: var(--font-mono);
+}
+
+/* Console register: hairlines instead of elevation, tight radii, restrained motion. */
+#nd-sidebar {
+  background-color: var(--color-background-page);
+  border-inline-end: 1px solid var(--color-border);
+}
+
+.dark #nd-sidebar {
+  --color-fd-muted: var(--color-background-soft);
+  --color-fd-secondary: var(--color-background-soft);
+  --color-fd-muted-foreground: var(--color-text-muted);
+}
+
+#nd-nav {
+  border-bottom: 1px solid var(--color-border);
+  background-color: color-mix(in srgb, var(--color-background-page) 88%, transparent);
+}
+
+.prose {
+  --tw-prose-body: var(--color-text);
+  --tw-prose-headings: var(--color-text);
+  --tw-prose-links: var(--color-text);
+  --tw-prose-bold: var(--color-text);
+  --tw-prose-code: var(--color-text);
+  --tw-prose-quotes: var(--color-text-muted);
+  --tw-prose-quote-borders: var(--color-border-strong);
+  --tw-prose-hr: var(--color-border);
+  --tw-prose-th-borders: var(--color-border-strong);
+  --tw-prose-td-borders: var(--color-border);
+}
+
+.prose h1,
+.prose h2,
+.prose h3 {
+  letter-spacing: -0.02em;
+  font-weight: 600;
+}
+
+.prose a {
+  text-decoration-color: var(--color-accent);
+  text-underline-offset: 3px;
+  transition: color var(--duration-control) var(--ease-standard);
+}
+
+.prose a:hover {
+  color: var(--color-accent);
+}
+
+.prose :where(code):not(:where(pre code)) {
+  background-color: var(--color-background-soft);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-control);
+  padding: 1px 4px;
+  font-size: 0.85em;
+  font-weight: 500;
+}
+
+.prose table {
+  font-size: 13px;
+}
+
+.prose th {
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,64 @@
+---
+title: cider.yaml
+description: Describe how Cider should prepare a sandbox for your project. Setup commands, a start command, and minimum disk.
+icon: FileCode
+---
+
+Put a `cider.yaml` file in your project root. When you run `cider open .`, Cider reads the file and prepares your sandbox from it.
+
+## Example
+
+```yaml title="cider.yaml"
+resources:
+  min_storage: 60GB
+
+setup:
+  - npm install
+
+start: npm run dev
+```
+
+## Keys
+
+All keys are optional.
+
+### `setup`
+
+One command, or a list of commands. Cider runs them once, in order, inside the sandbox after your project uploads. Each command starts in your project directory in a login `zsh` shell. If a command fails, sandbox creation fails.
+
+### `start`
+
+One command. Cider runs it in the background after setup completes. Its output goes to `/tmp/cider-start.log` inside the sandbox. When you resume a paused sandbox or restore a snapshot, Cider runs `start` again. Setup does not run again; its effects live on the disk.
+
+### `resources.min_storage`
+
+The minimum disk size this project needs, as bytes or a size such as `60GB`. Units are `KB`, `MB`, `GB`, and `TB`, binary (1 GB = 1024³ bytes), case-insensitive. Cider only places the sandbox on a node that has at least this much free storage, and it gives the sandbox VM a disk of this size. The disk never shrinks below the base image size. If no connected node qualifies, creation fails with a clear error.
+
+## Where the file must be
+
+Cider looks for `cider.yaml`, then `cider.yml`, at the root of the uploaded project. `cider open` uploads your project under its directory name, so `myapp/cider.yaml` is the root. Files deeper in the tree are ignored.
+
+## Where commands run
+
+Your project lands in `~/cider/<project-name>` in the guest. `setup` and `start` run from that directory in a login `zsh` shell as the `lume` user. Homebrew, Git, and Python 3 are available. Node.js is not installed in the default image; install it in `setup`:
+
+```yaml title="cider.yaml"
+setup:
+  - brew install node
+  - npm ci
+start: npm run dev
+```
+
+## Errors
+
+An invalid file fails the `cider open` call with a `422`:
+
+```text
+cider: {"_tag":"UnprocessableContent","detail":"resources.min_storage must be bytes or a size like \"60GB\""}
+```
+
+Other messages: `cider.yaml could not be parsed`, `cider.yaml must be a mapping`, `cider.yaml has an invalid launch configuration`.
+
+## Servers
+
+Servers use the same `setup` and `start` semantics, but you pass them in the server configuration instead of a file. See [Servers](/concepts/servers#configuration).

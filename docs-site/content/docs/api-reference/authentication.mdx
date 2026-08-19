@@ -1,0 +1,87 @@
+---
+title: Authentication
+description: Create an API key in the console and send it as a bearer token.
+icon: Key
+---
+
+The API authenticates with API keys. A key belongs to your organization and grants the same access as a member of that organization.
+
+## Create an API key
+
+<Steps>
+  <Step title="Open API keys">
+    In the console, open **Settings → API keys**.
+  </Step>
+  <Step title="Create a key">
+    Choose **Create key**. Give the key a name that tells you where it is used, for example `ci-github` or `laptop-brandon`.
+  </Step>
+  <Step title="Copy the key">
+    The key is shown once. Copy it into your secret store. If you lose it, delete it and create a new one.
+
+    Keys look like this:
+
+    ```text
+    cider_live_2f9c4a7d1e8b6c3f0a5d9e2b7c4f1a8d3e6b9c2f5a8d1e4b7c0f3a6d9e2b5c8f
+    ```
+  </Step>
+</Steps>
+
+## Use the key
+
+Send the key as a bearer token in the `Authorization` header on every request:
+
+<Tabs>
+  <Tab title="curl">
+    ```bash
+    curl https://api.cider.build/sandboxes \
+      -H "Authorization: Bearer $CIDER_TOKEN"
+    ```
+  </Tab>
+  <Tab title="JavaScript">
+    ```javascript
+    const res = await fetch("https://api.cider.build/sandboxes", {
+      headers: { Authorization: `Bearer ${process.env.CIDER_TOKEN}` },
+    });
+    const sandboxes = await res.json();
+    ```
+  </Tab>
+  <Tab title="Python">
+    ```python
+    import os, requests
+
+    res = requests.get(
+        "https://api.cider.build/sandboxes",
+        headers={"Authorization": f"Bearer {os.environ['CIDER_TOKEN']}"},
+    )
+    sandboxes = res.json()
+    ```
+  </Tab>
+</Tabs>
+
+The CLI accepts the same key in `CIDER_TOKEN`. See [CLI authentication](/cli/authentication).
+
+## Failures
+
+| Status | Body | Meaning |
+| --- | --- | --- |
+| `401` | `{"_tag":"Unauthorized","detail":"not authenticated"}` | The header is missing, the key is unknown, or the key was deleted. |
+
+The API does not distinguish between an unknown key and a deleted one.
+
+## Manage keys
+
+Keys never expire on their own. Delete a key in **Settings → API keys** to revoke it; requests with that key fail with `401` at once. Each key shows its last-used time so you can spot unused ones.
+
+## Keep keys safe
+
+- Store keys in your CI's secret store or a password manager. Do not commit them.
+- Create one key per place it is used, so you can revoke one without touching the others.
+- Rotate a key by creating a new one, switching your systems, then deleting the old one.
+
+## Session cookies
+
+The console authenticates with a session cookie, `cider.session_token`, and the same endpoints accept it. Use API keys for anything outside a browser.
+
+## Node credentials
+
+Nodes authenticate with their own credential, issued by `POST /nodes/enrollments`. That credential only works for the node connection and for uploading export chunks. It cannot call the endpoints on this reference.

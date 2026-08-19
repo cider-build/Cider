@@ -1,0 +1,13 @@
+{
+  "title": "Servers",
+  "description": "Long-lived, named macOS VMs with an explicit size and configuration.",
+  "pages": [
+    "listServers",
+    "createServer",
+    "getServer",
+    "deleteServer",
+    "stopServer",
+    "startServer",
+    "retryServer"
+  ]
+}
