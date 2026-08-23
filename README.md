@@ -3,3 +3,4 @@
 MacOS Virtual Machine provisioning platform for software development.
 
 work in progress.
+feedback-sdk pipeline verified.
